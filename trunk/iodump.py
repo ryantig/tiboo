@@ -31,9 +31,9 @@ re_c = re.compile(r"""^sd_(?P<scsi_id>init)_command: disk=(?P<disk>\S+), block=(
 """[0-9]+ sectors total, [0-9]+ bytes done\.$""",
 re.MULTILINE)
 
-re_c = re.compile(r"""^sd_(?P<scsi_id>init)_command: disk=(?P<disk>\S+), block=(?P<block>[0-9]+), count=(?P<count>[0-9]+)\r*\n""" +
-"""\S+ : block=[0-9]+\r*\n""" +
-"""\S+ : (?P<read_or_write>.)\S+ [0-9]+/[0-9]+ (?P<sector_size>[0-9]+) byte blocks\.\r*\n$""",
+re_c = re.compile(r"""^(\<[0-9]\>)?sd_init_command: disk=(?P<disk>\S+), block=(?P<block>[0-9]+), count=(?P<count>[0-9]+)\r*\n""" +
+"""(\<[0-9]\>)?\S+ : block=[0-9]+\r*\n""" +
+"""(\<[0-9]\>)?\S+ : (?P<read_or_write>.)\S+ [0-9]+/[0-9]+ (?P<sector_size>[0-9]+) byte blocks\.\r*\n$""",
 re.MULTILINE)
 
 status, hostname = commands.getstatusoutput("uname -n")
@@ -70,7 +70,6 @@ __cmdParser__.add_option(	"-o", "--output", metavar="FILE", \
                      		help="output file")
 
 (__cmdLineOpts__, __cmdLineArgs__) = __cmdParser__.parse_args()
-print __cmdLineOpts__
 
 Opts = {"src":"/proc/kmsg", "from_kmsg":True}
 	
@@ -118,19 +117,15 @@ while True:
 #	print "GOTCHA"
 
 	matched = False
-	
+
 	for ret in re_c.findall(line):
 
 		matched = True
 
-		ret = [ xval for xval in ret ]
+		linebuf = "%s,%s,%s,%s,%s,%s,%s,%s,%s" % (time.time(), hostname, "", "", ret[re_c.groupindex['disk']-1], ret[re_c.groupindex['read_or_write']-1], ret[re_c.groupindex['block']-1], ret[re_c.groupindex['count']-1], ret[re_c.groupindex['sector_size']-1])
 
-		ret.insert(0, hostname)
-		ret.insert(0, time.time())
-
-		outbuf += "%d,%s,%s,%s,%s,%s,%s,%s\n" % (ret[0], ret[1], ret[2], ret[3], ret[6], ret[4], ret[5], ret[7])
-
-		print "%d,%s,%s,%s,%s,%s,%s,%s" % (ret[0], ret[1], ret[2], ret[3], ret[6], ret[4], ret[5], ret[7])
+		print linebuf
+		outbuf += linebuf + "\n"
 
 	if (not matched and line.find("sd_init_command") == -1) or matched:
 		line = ""
