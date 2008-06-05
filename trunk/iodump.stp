@@ -1,0 +1,23 @@
+global outbuf
+
+function buflog (msg:string) {
+   printf(msg)
+   outbuf = outbuf . msg
+}
+
+probe module("sd_mod").function("sd_init_command") {
+  if ($SCpnt->request->flags /* cmd_flags on some kernels */ & 1)
+    read_or_write = "w"
+  else
+    read_or_write = "r"
+
+  msg = sprintf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", $SCpnt->request->rq_disk->disk_name, read_or_write, $SCpnt->request->sector, $SCpnt->device->sector_size, $SCpnt->request->nr_sectors)
+  buflog(msg)
+  delete msg
+  delete read_or_write
+
+}
+
+begin {
+  outbuf = "# timestamp,hostname,scsi_id,disk,operation,block,sectors,sector_size\n"
+}
