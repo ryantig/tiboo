@@ -5,24 +5,49 @@ function buflog (msg:string) {
   outbuf = outbuf . msg
 }
 
-#probe module("sd_mod").function("sd_init_command") {
-probe module("sd_mod").function("sd_prep_fn") {
 
-  if ($rq->cmd_flags /* cmd_flags on some kernels */ & 1)
+/* data collection: SCSI disk */
+%(kernel_v<"2.6.24" %?
+probe module("sd_mod").function("sd_init_command") !, kernel.function("sd_init_command") {
+  device=kernel_string($SCpnt->request->rq_disk->disk_name)
+  sector_size=$SCpnt->device->sector_size
+  nr_sectors=$SCpnt->request->nr_sectors
+  devices[device] = 1
+%(kernel_v>="2.6.19" %?
+  if ($SCpnt->request->cmd_flags & 1)
+%:
+  if ($SCpnt->request->flags & 1)
+%)
     read_or_write = "w"
   else
     read_or_write = "r"
 
-  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d\n", "CIAO", read_or_write, $rq->sector, $rq->nr_sectors)
-#  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", "CIAO", read_or_write, $rq->sector, $sdp->sector_size, $rq->nr_sectors)
-
-#  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", $rq->rq_disk->disk_name, read_or_write, $rq->sector, $sdp->sector_size, $rq->nr_sectors)
-#  msg = sprintf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", $SCpnt->request->rq_disk->disk_name, read_or_write, $SCpnt->request->sector, $SCpnt->device->sector_size, $SCpnt->request->nr_sectors)
-#  buflog(msg)
-#  delete msg
-#  delete read_or_write */
-
+  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
 }
+%:
+%{
+#include <scsi/scsi_device.h>
+%}
+
+function get_sector_size:long (data:long) %{ /* pure */
+  struct scsi_device *sdp = (struct scsi_device *)((long)THIS->data);
+  THIS->__retvalue = kread(&(sdp->sector_size));
+  CATCH_DEREF_FAULT();
+%}
+
+probe module("sd_mod").function("sd_prep_fn") !, kernel.function("sd_prep_fn") {
+  device=kernel_string($rq->rq_disk->disk_name)
+  sector_size=get_sector_size($q->queuedata)
+  nr_sectors=$rq->nr_sectors
+  devices[device] = 1
+  if ($rq->cmd_flags & 1)
+    read_or_write = "w"
+  else
+    read_or_write = "r"
+
+  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
+}
+%)
 
 probe begin {
   outbuf = "# timestamp,hostname,scsi_id,disk,operation,block,sectors,sector_size\n"
