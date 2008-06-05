@@ -2,8 +2,6 @@
 # set output 'pointsize.1.png'
 set title "plot with variable size points" 
 set datafile separator ","
-#plot 'data/dump-rand.csv' using 1:6:(0.2) with points lt 2 pt 7 ps variable
-plot 'data/dump-rand.csv' using 1:6:(7) with points lt 2 pt 7
-#plot 'prova.dat' using 2 with points lt 2 pt 7
+plot 'data/dump-rand.csv' using 1:6:(0.2) with points lt 2 pt 7, 'data/dump-seq.csv' using 1:6:(7) with points lt 1 pt 7
 pause -1 "Hit return to continue"
 
