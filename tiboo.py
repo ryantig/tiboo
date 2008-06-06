@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re, time, pdb, sys, getopt, datetime, commands, copy
-import directio
+import directio, os
 
 from optparse import OptionParser, Option
 
@@ -34,6 +34,9 @@ def human_value(value, base = 1000, unit = ""):
 		return "%dm%s" % (value * base, unit)
 
 	return "%2.2f%s" % (value, unit)
+
+def size_align(value, align):
+	return align * (int(value / align) + 1)
 	
 def merge_stats(name, v1, v2):
 
@@ -320,19 +323,18 @@ class io_set_class:
 				elif tdiff < -0.02:
 					print "warning: slow I/O (lagging %dms)" % abs(tdiff * 1000)
 
-#			io.block = io.block / 1024
-			print "seeking to",  io.block - (io.block % 512)
-			io.length = io.length - (io.length % 512)
-			io.length = 512 * 518
-			print io.length
-			directio.lseek(fps[io.disk], io.block - (io.block % 512))
-#			directio.lseek(fps[io.disk], io.block - (io.block % 512))
-#			fps[io.disk].seek(io.block)
+			sector = size_align(io.block / 1024, 512)
+
+			print "wanted", sector, "got", os.lseek(fps[io.disk], sector, 0)
+
 			timer = time.time()
-			print "read %d bytes" % len( directio.read(fps[io.disk], io.length) )
-#			if len( fps[io.disk].read(io.length) ) != io.length:
-#				print "warning: short read at block %d" % io.block
-#			time.sleep(0.001)
+
+			bs = 512 * 518
+			bs = 512
+			for inc in range(0, int(io.length / bs)):
+				directio.read(fps[io.disk], bs)
+			else:
+				print "read %d bytes (using %d block size)" % (io.length, bs)
 
 			srv_time.push(time.time() - timer)
 			print srv_time
