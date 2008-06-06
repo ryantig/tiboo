@@ -186,10 +186,10 @@ class io_set_class:
 
 			if len(io_in_second) > 0 and ( int(io.time) > int(io_in_second[0].time) + group_secs - 1 ):
 			
-				yield io_in_second[0].time, io_in_second
+				yield int(io_in_second[0].time), io_in_second
 
 				for sec in range(int(io_in_second[0].time) + 1 + group_secs - 1, int(io.time)):
-					yield sec, []
+					yield int(sec), []
 
 				io_in_second = [io]
 

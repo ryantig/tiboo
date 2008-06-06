@@ -22,7 +22,7 @@ probe module("sd_mod").function("sd_init_command") !, kernel.function("sd_init_c
   else
     read_or_write = "r"
 
-  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
+  printf("%d,hostname,scsi_id,%s,%s,%d,%d,%d\n", gettimeofday_s(), device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
 }
 %:
 %{
@@ -45,7 +45,7 @@ probe module("sd_mod").function("sd_prep_fn") !, kernel.function("sd_prep_fn") {
   else
     read_or_write = "r"
 
-  printf("timestamp,hostname,scsi_id,%s,%s,%d,%d,%d\n", device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
+  printf("%d,hostname,scsi_id,%s,%s,%d,%d,%d\n", gettimeofday_s(), device, read_or_write, $rq->sector, sector_size, $rq->nr_sectors)
 }
 %)
 
