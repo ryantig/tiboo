@@ -1,7 +1,17 @@
-# set terminal png transparent nocrop enhanced font arial 8 size 420,320 
-# set output 'pointsize.1.png'
-set title "plot with variable size points" 
-set datafile separator ","
-plot 'data/dump-rand.csv' using 1:6:(0.2) with points lt 2 pt 7, 'data/dump-seq.csv' using 1:6:(7) with points lt 1 pt 7
-pause -1 "Hit return to continue"
+set title "I/O access - disk seeks" 
+set ylabel "LBA (offset)"
+set xlabel "Timestamp (seconds)"
 
+dotsize(t) = 0.5 + ((t < 32768) ? 0 : (t-32768) * 0.00002)
+
+#set term postscript eps color
+#set output 'graph.eps' # convert -density 800x600 graph.eps graph.png
+set terminal png
+set output "graph.png"
+
+set datafile separator ","
+
+#plot 'data/dump-rand.csv' using 1:6:($7*0.001) with points lt 2 pt 7 ps variable, 'data/dump-seq.csv' using 1:6:($7*0.0001) with points lt 1 pt 7 ps variable
+plot 'data/dump-simul.csv' using 1:6:(dotsize($7 * $8)) with points lt 2 pt 7 ps variable 
+
+pause -1 "Press to continue."
