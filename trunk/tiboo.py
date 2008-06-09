@@ -36,7 +36,13 @@ def human_value(value, base = 1000, unit = ""):
 	return "%2.2f%s" % (value, unit)
 
 def size_align(value, align):
-	return align * (int(value / align) + 1)
+	spare = value % align
+	if spare > 0:
+		return value + (align - spare)
+	else:
+		return value
+
+#	return align * (int(value / align) + 1)
 	
 def merge_stats(name, v1, v2):
 
@@ -143,7 +149,8 @@ class io_set_class:
 	def set_file_source(self, fname):
 
 		self.data_fp = open(fname, "r")
-        
+		self.data_fname = fname
+
 	def ios_from_file(self):
 	
 		while True:
@@ -173,6 +180,69 @@ class io_set_class:
 			
 		self.data_fp.seek(0)
 		raise StopIteration
+
+	def graph(self):
+
+		from tempfile import mkstemp
+
+		tmp_fd, fname = mkstemp()
+		fp = os.fdopen(tmp_fd, 'w+b')
+
+		fp.write('''
+set datafile separator ","
+set xlabel "Timestamp (seconds)"
+set xtics auto
+set ytics auto
+set xtic rotate by -45
+#set timefmt "%%s"
+#set xdata time
+set auto y''')
+
+#		fp.write('''
+#set xrange [1211881195:1211886260]''')
+
+		fp.write('''
+# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 800x600 {} {}.png \;
+
+# LBA access
+
+set title "I/O access - disk seeks" 
+set ylabel "LBA (offset)"
+
+set term postscript eps enhanced color size 15,10
+set output 'tmp/graph_seeks.eps'
+
+plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size < 32KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'size < 128KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.6 title 'size < 1024KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.7 title 'size > 1MiB'
+
+# Bandwidth
+
+set title "I/O access - bandwidth" 
+set ylabel "KiB/s"
+
+set term postscript eps color size 15,5
+set output 'tmp/graph_throughput.eps'
+
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes title 'bandwidth (KiB/s)'
+
+# IOPS
+
+set title "I/O access - I/O operations per second" 
+set ylabel "iops"
+
+set term postscript eps color size 15,5
+set output 'tmp/graph_iops.eps'
+
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes title "I/O operations per second"''' % \
+		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
+
+		fp.close()
+
+		print fname , commands.getstatusoutput("gnuplot %s" % fname)
+
+#		os.unlink(fname)
 			
 	def text_graph(self):
 	
@@ -290,6 +360,7 @@ class io_set_class:
 				dev = "/dev/%s" % io.disk
 
 #			dev = "/dev/zero"
+			dev = "disk"
 			
 			print """adding device "%s" (will use %s) in %s mode""" % (io.disk, dev, op)
 
@@ -325,14 +396,16 @@ class io_set_class:
 
 			sector = size_align(io.block / 1024, 512)
 
-			print "wanted", sector, "got", os.lseek(fps[io.disk], sector, 0)
+			print "wanted", io.block, "got", os.lseek(fps[io.disk], sector, 0)
 
 			timer = time.time()
 
 			bs = 512 * 518
-			bs = 512
+			bs = 4096
 			for inc in range(0, int(io.length / bs)):
-				directio.read(fps[io.disk], bs)
+				txt = directio.read(fps[io.disk], bs)
+#				print txt[0:64]
+				del txt
 			else:
 				print "read %d bytes (using %d block size)" % (io.length, bs)
 
@@ -466,7 +539,7 @@ if __cmdLineOpts__.do_analyse:
 	ios.analyse()
 
 if __cmdLineOpts__.do_graph:
-	ios.text_graph()
+	ios.graph()
 	
 if __cmdLineOpts__.disk_to_disk:
 	tmp = {}
