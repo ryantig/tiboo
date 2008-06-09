@@ -190,10 +190,13 @@ class io_set_class:
 
 		fp.write('''
 set datafile separator ","
-set xlabel "Timestamp (seconds)"
+set xlabel "UNIX Timestamp"
 set xtics auto
 set ytics auto
 set xtic rotate by -45
+#set format x "%d"
+#set format y "%d"
+#set format x "%Y-%m-%d %H:%M:%S"
 #set timefmt "%%s"
 #set xdata time
 set auto y''')
@@ -202,7 +205,7 @@ set auto y''')
 #set xrange [1211881195:1211886260]''')
 
 		fp.write('''
-# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 800x600 {} {}.png \;
+# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
 
 # LBA access
 
@@ -212,9 +215,9 @@ set ylabel "LBA (offset)"
 set term postscript eps enhanced color size 15,10
 set output 'tmp/graph_seeks.eps'
 
-plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size < 32KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'size < 128KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.6 title 'size < 1024KiB', \
+plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size <= 32KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'size <= 128KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.6 title 'size <= 1024KiB', \
 	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.7 title 'size > 1MiB'
 
 # Bandwidth
@@ -225,7 +228,7 @@ set ylabel "KiB/s"
 set term postscript eps color size 15,5
 set output 'tmp/graph_throughput.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes title 'bandwidth (KiB/s)'
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes lt 2 title 'bandwidth (KiB/s)'
 
 # IOPS
 
@@ -235,7 +238,7 @@ set ylabel "iops"
 set term postscript eps color size 15,5
 set output 'tmp/graph_iops.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes title "I/O operations per second"''' % \
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes lt 3 title "I/O operations per second"''' % \
 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
 
 		fp.close()
