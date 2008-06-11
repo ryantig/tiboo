@@ -59,14 +59,17 @@ def sysctl_set_logging(level):
 
 
 __cmdParser__ = OptionParser()
+__cmdParser__.add_option(	"--debug", action="store_true", \
+				dest="do_debug", default=False, \
+                   		help="debug mode")
 __cmdParser__.add_option(	"-f", "--force", action="store_true", \
-							dest="do_force", default=False, \
-                     		help="don't check prerequisites")
+				dest="do_force", default=False, \
+                   		help="don't check prerequisites")
 __cmdParser__.add_option(	"-s", "--src", metavar="FILE", \
-							dest="src", type = "string", default="/proc/kmsg", \
+				dest="src", type = "string", default="/proc/kmsg", \
                      		help="data source file or device")
 __cmdParser__.add_option(	"-o", "--output", metavar="FILE", \
-							dest="output", type = "string", default=None, \
+				dest="output", type = "string", default=None, \
                      		help="output file")
 
 (__cmdLineOpts__, __cmdLineArgs__) = __cmdParser__.parse_args()
@@ -114,7 +117,9 @@ while True:
 	if not line:
 		break
 
-#	print "GOTCHA"
+	if __cmdLineOpts__.do_debug:
+		print "read: %s" % line
+		outbuf += "# %s\n" % line
 
 	matched = False
 
