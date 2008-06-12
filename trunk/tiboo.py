@@ -333,10 +333,14 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "\t", total_iops, total_random
 		print
 
-	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False):
+	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = True):
     
 		if make_writes_as_reads:
 			read_only = True
+
+		if framedrop and asap:
+			print "notice: can't use framedrop with asap, disabling framedrop."
+			framedrop = False
 
 		fps = {}
 
@@ -378,6 +382,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		time_begin = time.time()
 		time_first = None
 		srv_time = min_avg_max_class("srv_time", base = 1000, unit = "s")
+		skipped_frames = 0
 
 		for io in self.ios_from_file():
 		
@@ -392,7 +397,11 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
  #  	             print "sleeping", tdiff, time.time() - time_begin, io.time
 					time.sleep(tdiff)
 				elif tdiff < -0.02:
-					print "warning: slow I/O (lagging %dms)" % abs(tdiff * 1000)
+					if framedrop:
+						print "warning: skipping frame (lagging %dms)" % abs(tdiff * 1000)
+						skipped_frames += 1
+					else:
+						print "warning: slow I/O (lagging %dms)" % abs(tdiff * 1000)
 
 			sector = size_align(io.block, 512)
 
@@ -401,12 +410,10 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 			timer = time.time()
 
-#			bs = 512 * 518
-#			bs = 4096
 			done_bytes = 0
 
 			while done_bytes < io.length:
-#				pdb.set_trace()
+
 				do_bytes = size_align(io.length - done_bytes, 512)
 				if do_bytes > 4096:
 					do_bytes = 512 * 518
@@ -416,10 +423,6 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 				if len(txt) == 0:
 					break
 
-				txt += "."
-
-#				print "done one read of size", len(txt)
-
 				done_bytes += len(txt)
 
 			del txt
@@ -427,13 +430,15 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 				print "short read/write, sector %d, wanted %d bytes, read %d bytes" % (sector, io.length, done_bytes)
 
 			srv_time.push(time.time() - timer)
-			print srv_time
+
+			if srv_time.pushed % 10 == 0:
+				print srv_time, "skipped %d%% frames" % (skipped_frames * 100 / srv_time.pushed)
 
 		for fp in fps.values():
 #			fp.close()
 			directio.close(fp)
                         
-		print srv_time
+		print srv_time, (skipped_frames * 100 / srv_time.pushed)
 
 def seq_random_analysis(ios):
 
@@ -514,21 +519,24 @@ __cmdParser__.add_option("-a", "--analyse", action="store_true", \
 __cmdParser__.add_option("-g", "--graph", action="store_true", \
                      dest="do_graph", default=False, \
                      help="analyse disk access and provide graph")                     
+__cmdParser__.add_option("-t", "--textgraph", action="store_true", \
+                     dest="do_text_graph", default=False, \
+                     help="analyse disk access and provide graph")
 __cmdParser__.add_option(	"-b", metavar="TSTAMP", \
-							dest="t_begin", type = "int", default=-1, \
-                     		help="begin at timestamp")
+		     dest="t_begin", type = "int", default=-1, \
+                     help="begin at timestamp")
 __cmdParser__.add_option(	"-e", metavar="TSTAMP", \
-							dest="t_end", type = "int", default=-1, \
-                     		help="end parsing at timestamp")
+		     dest="t_end", type = "int", default=-1, \
+                     help="end parsing at timestamp")
 __cmdParser__.add_option("-r", "--replay", action="store_true", \
                      dest="do_replay", default=False, \
                      help="replay disk access")
 __cmdParser__.add_option(	"--only-disk", metavar="DEVICE", \
-							dest="only_disks", type = "string", action = "extend", default = [], \
-                     		help="only consider DEVICE")
+		     dest="only_disks", type = "string", action = "extend", default = [], \
+                     help="only consider DEVICE")
 __cmdParser__.add_option(	"--disk-to-disk", metavar="DEVICE1,DEVICE2", \
-							dest="disk_to_disk", type = "string", action = "extend", default = [], \
-                     		help="replace occurrences of DEVICE1 in file with DEVICE2")
+		     dest="disk_to_disk", type = "string", action = "extend", default = [], \
+                     help="replace occurrences of DEVICE1 in file with DEVICE2")
 
 (__cmdLineOpts__, __cmdLineArgs__) = __cmdParser__.parse_args()
 
@@ -544,7 +552,7 @@ print
 print "tiboo (c) navid@navid.it"
 print
     
-if not ( __cmdLineOpts__.do_replay or __cmdLineOpts__.do_graph ):
+if not ( __cmdLineOpts__.do_replay or __cmdLineOpts__.do_graph or  __cmdLineOpts__.do_text_graph):
 	__cmdLineOpts__.do_analyse = True
 
 if __cmdLineOpts__.do_analyse:
@@ -557,6 +565,9 @@ if __cmdLineOpts__.do_analyse:
 
 if __cmdLineOpts__.do_graph:
 	ios.graph()
+
+if __cmdLineOpts__.do_text_graph:
+	ios.text_graph()
 	
 if __cmdLineOpts__.disk_to_disk:
 	tmp = {}
