@@ -333,7 +333,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "\t", total_iops, total_random
 		print
 
-	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = True):
+	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False):
     
 		if make_writes_as_reads:
 			read_only = True
@@ -362,9 +362,6 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 			else:
 				dev = "/dev/%s" % io.disk
 
-#			dev = "/dev/zero"
-			dev = "disk"
-			
 			print """adding device "%s" (will use %s) in %s mode""" % (io.disk, dev, op)
 
 			try:
@@ -397,20 +394,37 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 				elif tdiff < -0.02:
 					print "warning: slow I/O (lagging %dms)" % abs(tdiff * 1000)
 
-			sector = size_align(io.block / 1024, 512)
+			sector = size_align(io.block, 512)
 
-			print "wanted", io.block, "got", os.lseek(fps[io.disk], sector, 0)
+			if sector != os.lseek(fps[io.disk], sector, 0):
+				print "got different sector than asked", sector
 
 			timer = time.time()
 
-			bs = 512 * 518
-			bs = 4096
-			for inc in range(0, int(io.length / bs)):
-				txt = directio.read(fps[io.disk], bs)
-#				print txt[0:64]
-				del txt
-			else:
-				print "read %d bytes (using %d block size)" % (io.length, bs)
+#			bs = 512 * 518
+#			bs = 4096
+			done_bytes = 0
+
+			while done_bytes < io.length:
+#				pdb.set_trace()
+				do_bytes = size_align(io.length - done_bytes, 512)
+				if do_bytes > 4096:
+					do_bytes = 512 * 518
+
+				txt = directio.read(fps[io.disk], do_bytes)
+
+				if len(txt) == 0:
+					break
+
+				txt += "."
+
+#				print "done one read of size", len(txt)
+
+				done_bytes += len(txt)
+
+			del txt
+			if done_bytes < io.length:
+				print "short read/write, sector %d, wanted %d bytes, read %d bytes" % (sector, io.length, done_bytes)
 
 			srv_time.push(time.time() - timer)
 			print srv_time
