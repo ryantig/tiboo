@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re, time, pdb, sys, getopt, datetime, commands, copy
-import directio, os
+import os
 
 from optparse import OptionParser, Option
 
@@ -334,7 +334,9 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print
 
 	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = True):
-    
+
+		import directio
+
 		if make_writes_as_reads:
 			read_only = True
 
