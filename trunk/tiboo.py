@@ -2,6 +2,7 @@
 
 import re, time, pdb, sys, getopt, datetime, commands, copy
 import os
+import random
 
 from optparse import OptionParser, Option
 
@@ -201,8 +202,8 @@ set xtic rotate by -45
 #set xdata time
 set auto y''')
 
-#		fp.write('''
-#set xrange [1211881195:1211886260]''')
+		fp.write('''
+set xrange [1213263960:1213287292]''')
 
 		fp.write('''
 # To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
@@ -318,7 +319,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 			
 			total_bs = merge_stats("total_bs", bs, total_bs)
 			
-		if first_time:
+		if first_time == True:
 			print "not enough data was found."
 			sys.exit()
 
@@ -333,7 +334,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "\t", total_iops, total_random
 		print
 
-	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = True):
+	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = True):
 
 		import directio
 
@@ -343,6 +344,12 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		if framedrop and asap:
 			print "notice: can't use framedrop with asap, disabling framedrop."
 			framedrop = False
+
+		if offset == True:
+			offset = random.randint(1024 * 1024 * 50, 1024 * 1024 * 100)
+			print "using random offset of %d" % offset
+		elif offset == False:
+			offset = 0
 
 		fps = {}
 
@@ -371,7 +378,6 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 			print """adding device "%s" (will use %s) in %s mode""" % (io.disk, dev, op)
 
 			try:
-#				fps[io.disk] = open(dev, op)
 				fps[io.disk] = directio.open(dev, directio.O_RDONLY, 0644)
 			except IOError:
 				print "error: could not open %s" % dev
@@ -383,58 +389,64 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "Preliminary checks were successful, beginning test..."
 		time_begin = time.time()
 		time_first = None
+		await = min_avg_max_class("await", base = 1000, unit = "s")
 		srv_time = min_avg_max_class("srv_time", base = 1000, unit = "s")
 		skipped_frames = 0
 
-		for io in self.ios_from_file():
+		try:
+
+			for io in self.ios_from_file():
 		
-			if not time_first:
-				time_first = io.time
+				if not time_first:
+					time_first = io.time
 
-#			print "doing", io.time, time_first, (time.time() - time_begin)
+	#			print "doing", io.time, time_first, (time.time() - time_begin)
 
-			if not asap:
-				tdiff = (io.time - time_first) / speed - ((time.time() - time_begin))
-				if tdiff > 0:
- #  	             print "sleeping", tdiff, time.time() - time_begin, io.time
-					time.sleep(tdiff)
-				elif tdiff < -0.02:
-					if framedrop:
+				if not asap:
+					tdiff = (io.time - time_first) / speed - ((time.time() - time_begin))
+					if tdiff > 0:
+	 #  	             print "sleeping", tdiff, time.time() - time_begin, io.time
+						time.sleep(tdiff)
+					elif tdiff < -0.02 and framedrop:
 						print "warning: skipping frame (lagging %dms)" % abs(tdiff * 1000)
 						skipped_frames += 1
-					else:
-						print "warning: slow I/O (lagging %dms)" % abs(tdiff * 1000)
+						continue
 
-			sector = size_align(io.block, 512)
+				sector = size_align(io.block + offset, 512)
 
-			if sector != os.lseek(fps[io.disk], sector, 0):
-				print "got different sector than asked", sector
+				if sector != os.lseek(fps[io.disk], sector, 0):
+					print "got different sector than asked", sector
 
-			timer = time.time()
+				timer = time.time()
 
-			done_bytes = 0
+				done_bytes = 0
 
-			while done_bytes < io.length:
+				while done_bytes < io.length:
 
-				do_bytes = size_align(io.length - done_bytes, 512)
-				if do_bytes > 4096:
-					do_bytes = 512 * 518
+					do_bytes = size_align(io.length - done_bytes, 512)
+					if do_bytes > 4096:
+						do_bytes = 512 * 518
 
-				txt = directio.read(fps[io.disk], do_bytes)
+					txt = directio.read(fps[io.disk], do_bytes)
 
-				if len(txt) == 0:
-					break
+					if len(txt) == 0:
+						break
 
-				done_bytes += len(txt)
+					done_bytes += len(txt)
 
-			del txt
-			if done_bytes < io.length:
-				print "short read/write, sector %d, wanted %d bytes, read %d bytes" % (sector, io.length, done_bytes)
+				del txt
+				if done_bytes < io.length:
+					print "short read/write, sector %d, wanted %d bytes, read %d bytes" % (sector, io.length, done_bytes)
 
-			srv_time.push(time.time() - timer)
+				srv_time.push(time.time() - timer)
+				if not asap:
+					await.push(time.time() - (time_begin + (io.time - time_first)) )
 
-			if srv_time.pushed % 10 == 0:
-				print srv_time, "skipped %d%% frames" % (skipped_frames * 100 / srv_time.pushed)
+				if srv_time.pushed % 10 == 0:
+					print await, srv_time, "skipped %d%% frames" % (skipped_frames * 100 / srv_time.pushed)
+
+		except KeyboardInterrupt:
+			print "Keyboard interrupt caught, terminating."
 
 		for fp in fps.values():
 #			fp.close()
