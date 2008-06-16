@@ -109,7 +109,7 @@ class min_avg_max_class:
         
 class io_class:
 
-	def __init__(self, time, r_or_w, block, disk = None, host = None, length = None, sectors = None, sector_size = None, retcode = None):
+	def __init__(self, time, r_or_w, sector, disk = None, host = None, length = None, sectors = None, sector_size = None, retcode = None):
 
 		self.time = float(time)
 		
@@ -120,8 +120,10 @@ class io_class:
 		else:
 			self.read, self.write = False, True
 
-		self.block = int(block)
-		
+		self.sector = int(sector)
+
+		self.block = int(sector) * 512
+
 		if length:
 			self.length = int(length)
 			self.sectors = self.length / 512
@@ -166,7 +168,7 @@ class io_set_class:
 
 			ret = line.split(",")
 
-			io = io_class(time = ret[0], host = ret[1], disk = ret[3], r_or_w = ret[4], block = ret[5], sectors = ret[6], sector_size = ret[7])
+			io = io_class(time = ret[0], host = ret[1], disk = ret[3], r_or_w = ret[4], sector = ret[5], sectors = ret[6], sector_size = ret[7])
 			
 			if self.only_disks and io.disk not in self.only_disks:
 				continue
@@ -334,9 +336,13 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "\t", total_iops, total_random
 		print
 
-	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = True):
+	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = False):
 
-		import directio
+		try:
+			import directio
+		except ImportError:
+			print "directio does not appear to be available, I/O replay needs this module to work."
+			sys.exit(1)
 
 		if make_writes_as_reads:
 			read_only = True
@@ -412,10 +418,10 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 						skipped_frames += 1
 						continue
 
-				sector = size_align(io.block + offset, 512)
+				block = size_align(io.block + offset, 512)
 
-				if sector != os.lseek(fps[io.disk], sector, 0):
-					print "got different sector than asked", sector
+				if block != os.lseek(fps[io.disk], block, 0):
+					print "got different block than asked", block
 
 				timer = time.time()
 
@@ -424,8 +430,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 				while done_bytes < io.length:
 
 					do_bytes = size_align(io.length - done_bytes, 512)
-					if do_bytes > 4096:
-						do_bytes = 512 * 518
+					do_bytes = min( [512 * 518, do_bytes] )
 
 					txt = directio.read(fps[io.disk], do_bytes)
 
@@ -436,7 +441,9 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 				del txt
 				if done_bytes < io.length:
-					print "short read/write, sector %d, wanted %d bytes, read %d bytes" % (sector, io.length, done_bytes)
+					print "short read/write, block %d, wanted %d bytes, read %d bytes" % (block, io.length, done_bytes)
+
+				print "read/write, block %d, wanted %d bytes, read %d bytes" % (block, io.length, done_bytes)
 
 				srv_time.push(time.time() - timer)
 				if not asap:
