@@ -204,8 +204,8 @@ set xtic rotate by -45
 #set xdata time
 set auto y''')
 
-		fp.write('''
-set xrange [1213263960:1213287292]''')
+#		fp.write('''
+#set xrange [1213263960:1213287292]''')
 
 		fp.write('''
 # To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
