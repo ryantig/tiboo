@@ -1,3 +1,5 @@
+#!/usr/bin/stap -g
+
 global outbuf
 
 function buflog (msg:string) {
