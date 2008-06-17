@@ -69,15 +69,20 @@ def merge_stats(name, v1, v2):
 
 class min_avg_max_class:
 
-	def __init__(self, name, value = None, base = 1000, unit = "", thread_safe = False):
+	def clear(self):
 
-		self.name = name
 		self.min = None
 		self.max = None
 		self.sum = 0
 		self.pushed = 0
+
+	def __init__(self, name, value = None, base = 1000, unit = "", thread_safe = False):
+
+		self.name = name
 		self.base = base
 		self.unit = unit
+
+		self.clear()
 
 		if thread_safe:
 			from threading import Lock
@@ -223,23 +228,24 @@ set auto y
 #	"<awk 'BEGIN {FS=\\",\\"} { ios+=1;    ret[$7*$8]+=1 } END { for (x in ret) print x\\",\\"ret[x]/ios*100 }' %s" using 1/1024:2 with boxes lt 1 fs ti col solid title 'Data transferred (%%)'
 
 		fp.write('''
+
+set term postscript eps enhanced color size 15,10 font 20
+
 # To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
+# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} data/logo.png -gravity center -composite -format png {}.png \;
 
 set title "I/O size (data tranferred for size)"
 set xlabel "Request size (KiB)"
 set ylabel "Percentage"
-#set boxwidth 4 relative
-#set style fill solid border -1
 
-set style data histogram
+#set style data histogram
 set style histogram clustered gap 2 title offset character 0, 0, 0
 set style fill solid border -1
 
-set xtics 1
+set xtics font ",12"
 set xrange [0:]
 set yrange [0:]
 
-set term postscript eps enhanced color size 15,10
 set output 'tmp/graph_iosizes.eps'
 
 plot "<awk 'BEGIN {FS=\\",\\"} { ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
@@ -248,21 +254,20 @@ plot "<awk 'BEGIN {FS=\\",\\"} { ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } EN
 
 set xrange [*:*] noreverse nowriteback
 set yrange [*:*] noreverse nowriteback
-set xtics auto
+set xtics auto font ""
 set mxtics default
 set xlabel "UNIX Timestamp"
-#set format x "%%d"
+set style fill solid noborder
 #set format y "%%d"
-#set format x "%%Y-%%m-%%d %%H:%%M:%%S"
-#set timefmt "%%s"
-#set xdata time
+set format x "%%Y-%%m-%%d %%H:%%M:%%S"
+set timefmt "%%s"
+set xdata time
 
 # LBA access
 
 set title "I/O access - disk seeks" 
 set ylabel "LBA (offset)"
 
-set term postscript eps enhanced color size 15,10
 set output 'tmp/graph_seeks.eps'
 
 plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size <= 32KiB', \
@@ -275,20 +280,18 @@ plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize
 set title "I/O access - bandwidth" 
 set ylabel "KiB/s"
 
-set term postscript eps color size 15,5
 set output 'tmp/graph_throughput.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes lt 2 title 'bandwidth (KiB/s)'
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with filledcurves lt 2 title 'bandwidth (KiB/s)'
 
 # IOPS
 
 set title "I/O access - I/O operations per second" 
 set ylabel "iops"
 
-set term postscript eps color size 15,5
 set output 'tmp/graph_iops.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes lt 3 title "I/O operations per second"''' % \
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"''' % \
 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
 
 		fp.close()
@@ -391,18 +394,20 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		time_first = None
 		time_begin = None
 		kindly_stop = False
+		read_bytes = 0
+		written_bytes = 0
 
-		offset = 0
-		asap = False
-		framedrop = False
-		speed = 1
-		read_only = True
-		make_writes_as_reads = True
-
-		def __init__(self, ios, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = False):
+		def __init__(self, ios, read_only = True, make_writes_as_reads = True, speed = 1, disk_to_disk = {}, asap = True, framedrop = False, offset = False):
 
 			from Queue import Queue
 			from threading import Thread
+
+			self.asap = asap
+			self.disk_to_disk = disk_to_disk
+			self.make_writes_as_reads = make_writes_as_reads
+			self.framedrop = framedrop
+			self.read_only = read_only
+			self.speed = speed
 
 			if make_writes_as_reads:
 				self.read_only = True
@@ -416,8 +421,6 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 				print "using random offset of %d" % offset
 			elif offset == False:
 				self.offset = 0
-
-			self.disk_to_disk = disk_to_disk
 
 			self.queue = Queue(self.max_queue_size)
 			self.await = min_avg_max_class("await", base = 1000, unit = "s", thread_safe = True)
@@ -496,8 +499,6 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 		def worker(self):
 
-			print "worker starting"
-
 			import directio
 
 			while True:
@@ -551,9 +552,11 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 #				print "read/write, block %d, wanted %d bytes, read %d bytes" % (io.block, io.length, done_bytes)
 
+				self.read_bytes += done_bytes
+
 				self.await.push(time.time() - timer)
 
-				self.queue.task_done() 
+				self.queue.task_done()
 
 		def push(self, io):
 
@@ -588,10 +591,21 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 		io_engine.start()
 
+		prev_read_bytes = 0
+		stats_interval = 5 # seconds
+		sec = 0
+
 		try:
 			while not io_engine.finished():
-				time.sleep(1)
-				print io_engine.await.pushed, io_engine.await, io_engine.queue.qsize()
+
+				time.sleep(stats_interval)
+
+				print "t:%d iops:%d %s r:%dKiB/s w:0KiB/s" % (sec * stats_interval, io_engine.await.pushed / stats_interval, io_engine.await, (io_engine.read_bytes - prev_read_bytes) / 1024 / stats_interval)
+
+				prev_read_bytes = io_engine.read_bytes
+				io_engine.await.clear()
+				sec += 1
+
 		except KeyboardInterrupt:
 			print "exiting."
 			io_engine.terminate()
