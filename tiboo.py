@@ -69,7 +69,7 @@ def merge_stats(name, v1, v2):
 
 class min_avg_max_class:
 
-	def __init__(self, name, value = None, base = 1000, unit = ""):
+	def __init__(self, name, value = None, base = 1000, unit = "", thread_safe = False):
 
 		self.name = name
 		self.min = None
@@ -79,8 +79,22 @@ class min_avg_max_class:
 		self.base = base
 		self.unit = unit
 
+		if thread_safe:
+			from threading import Lock
+			self._threadlock = Lock()
+		else:
+			self._threadlock = None
+
 		if value:
 			self.push(value)
+
+	def lock_acquire(self):
+		if self._threadlock:
+			self._threadlock.acquire()
+
+	def lock_release(self):
+		if self._threadlock:
+			self._threadlock.release()
 
 	def push(self, value):
 
@@ -91,6 +105,8 @@ class min_avg_max_class:
 
 		value = float(value)
 
+		self.lock_acquire()
+
 		if self.min == None or value < self.min:
 			self.min = value
 
@@ -99,6 +115,8 @@ class min_avg_max_class:
 
 		self.sum += value
 		self.pushed += 1
+
+		self.lock_release()
 		
 	def avg(self):
 		try:	return float(self.sum / self.pushed)
@@ -193,22 +211,51 @@ class io_set_class:
 
 		fp.write('''
 set datafile separator ","
-set xlabel "UNIX Timestamp"
-set xtics auto
 set ytics auto
 set xtic rotate by -45
-#set format x "%d"
-#set format y "%d"
-#set format x "%Y-%m-%d %H:%M:%S"
-#set timefmt "%%s"
-#set xdata time
-set auto y''')
+set auto y
+''')
 
 #		fp.write('''
 #set xrange [1213263960:1213287292]''')
 
+#plot 	"<awk 'BEGIN {FS=\\",\\"} { tt+=$7*$8; ret[$7*$8]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100}' %s" using 1/1024:2 with boxes lt 2 fs ti col solid title 'Number of requests (%%)', \
+#	"<awk 'BEGIN {FS=\\",\\"} { ios+=1;    ret[$7*$8]+=1 } END { for (x in ret) print x\\",\\"ret[x]/ios*100 }' %s" using 1/1024:2 with boxes lt 1 fs ti col solid title 'Data transferred (%%)'
+
 		fp.write('''
 # To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
+
+set title "I/O size (data tranferred for size)"
+set xlabel "Request size (KiB)"
+set ylabel "Percentage"
+#set boxwidth 4 relative
+#set style fill solid border -1
+
+set style data histogram
+set style histogram clustered gap 2 title offset character 0, 0, 0
+set style fill solid border -1
+
+set xtics 1
+set xrange [0:]
+set yrange [0:]
+
+set term postscript eps enhanced color size 15,10
+set output 'tmp/graph_iosizes.eps'
+
+plot "<awk 'BEGIN {FS=\\",\\"} { ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
+
+# All the following use X-AXIS as time
+
+set xrange [*:*] noreverse nowriteback
+set yrange [*:*] noreverse nowriteback
+set xtics auto
+set mxtics default
+set xlabel "UNIX Timestamp"
+#set format x "%%d"
+#set format y "%%d"
+#set format x "%%Y-%%m-%%d %%H:%%M:%%S"
+#set timefmt "%%s"
+#set xdata time
 
 # LBA access
 
@@ -220,8 +267,8 @@ set output 'tmp/graph_seeks.eps'
 
 plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size <= 32KiB', \
 	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'size <= 128KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.6 title 'size <= 1024KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.7 title 'size > 1MiB'
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'size <= 1024KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'size > 1MiB'
 
 # Bandwidth
 
@@ -242,7 +289,7 @@ set term postscript eps color size 15,5
 set output 'tmp/graph_iops.eps'
 
 plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" with boxes lt 3 title "I/O operations per second"''' % \
-		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
+		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
 
 		fp.close()
 
@@ -336,92 +383,151 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		print "\t", total_iops, total_random
 		print
 
-	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = False):
+	class ioreplay_engine_class:
 
-		try:
-			import directio
-		except ImportError:
-			print "directio does not appear to be available, I/O replay needs this module to work."
-			sys.exit(1)
-
-		if make_writes_as_reads:
-			read_only = True
-
-		if framedrop and asap:
-			print "notice: can't use framedrop with asap, disabling framedrop."
-			framedrop = False
-
-		if offset == True:
-			offset = random.randint(1024 * 1024 * 50, 1024 * 1024 * 100)
-			print "using random offset of %d" % offset
-		elif offset == False:
-			offset = 0
-
+		num_worker_threads = 1
+		max_queue_size = 1000
 		fps = {}
+		time_first = None
+		time_begin = None
+		kindly_stop = False
 
-		for io in self.ios_from_file():
-        
-			if io.disk in fps.keys():
-				continue
-				
-			if io.write and read_only and not make_writes_as_reads: # and os.stat(disk)
+		offset = 0
+		asap = False
+		framedrop = False
+		speed = 1
+		read_only = True
+		make_writes_as_reads = True
+
+		def __init__(self, ios, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = False):
+
+			from Queue import Queue
+			from threading import Thread
+
+			if make_writes_as_reads:
+				self.read_only = True
+
+			if framedrop and asap:
+				print "notice: can't use framedrop with asap, disabling framedrop."
+				self.framedrop = False
+
+			if offset == True:
+				self.offset = random.randint(1024 * 1024 * 50, 1024 * 1024 * 100)
+				print "using random offset of %d" % offset
+			elif offset == False:
+				self.offset = 0
+
+			self.disk_to_disk = disk_to_disk
+
+			self.queue = Queue(self.max_queue_size)
+			self.await = min_avg_max_class("await", base = 1000, unit = "s", thread_safe = True)
+
+			self.pop_thread = Thread(target=self.populate_queue, args = [ios])
+			self.pop_thread.setDaemon(True)
+			self.pop_thread.start()
+
+			while self.queue.full():
+				time.sleep(0.1)
+
+		def start(self):
+
+			from threading import Thread
+
+			self.time_begin = time.time()
+
+			for i in range(self.num_worker_threads): 
+				t = Thread(target=self.worker)
+				t.setDaemon(True)
+				t.start() 
+
+		def populate_queue(self, ios):
+
+			refill = True
+
+			for io in ios:
+
+				if self.kindly_stop:
+					return
+
+				while not refill:
+					time.sleep(0.5)
+					if self.queue.qsize() < self.max_queue_size * 75 / 100:
+						refill = True
+
+				self.push(io)
+
+				if self.queue.full():
+					refill = False
+					continue
+
+		def open_disk(self, io):
+
+			if io.write and self.read_only and not self.make_writes_as_reads: # and os.stat(disk)
 				print """Data replay would write to disk %s, but read-only mode is enabled.""" % io.disk
 				print """Disable read-only mode or enable "make_writes_as_reads" to convert writes to reads."""
 				return False
 
-			if not read_only and not make_write_as_reads and io.write == True:
+			if not self.read_only and not self.make_write_as_reads and io.write == True:
 				op = "w"
 			else:
 				op = "r"
 
 			op = "r"
 
-			if io.disk in disk_to_disk.keys():
-				dev = "/dev/%s" % disk_to_disk[io.disk]
+			if io.disk in self.fps.keys() and ( self.fps[io.disk]["mode"] == "w" or self.fps[io.disk]["mode"] == op):
+				return self.fps[io.disk]["fp"]
+
+			if io.disk in self.disk_to_disk.keys():
+				dev = "/dev/%s" % self.disk_to_disk[io.disk]
 			else:
 				dev = "/dev/%s" % io.disk
 
 			print """adding device "%s" (will use %s) in %s mode""" % (io.disk, dev, op)
 
+			import directio
+
 			try:
-				fps[io.disk] = directio.open(dev, directio.O_RDONLY, 0644)
-			except IOError:
+				self.fps[io.disk] = { "fp":directio.open(dev, directio.O_RDONLY, 0644), "mode":op }
+			except OSError:
 				print "error: could not open %s" % dev
 				return False
-				
-			if ios.only_disks and len(fps) == len(ios.only_disks):
-				break
- 
-		print "Preliminary checks were successful, beginning test..."
-		time_begin = time.time()
-		time_first = None
-		await = min_avg_max_class("await", base = 1000, unit = "s")
-		srv_time = min_avg_max_class("srv_time", base = 1000, unit = "s")
-		skipped_frames = 0
 
-		try:
+			return self.fps[io.disk]["fp"]
 
-			for io in self.ios_from_file():
-		
-				if not time_first:
-					time_first = io.time
+		def worker(self):
 
-	#			print "doing", io.time, time_first, (time.time() - time_begin)
+			print "worker starting"
 
-				if not asap:
-					tdiff = (io.time - time_first) / speed - ((time.time() - time_begin))
+			import directio
+
+			while True:
+
+				if self.kindly_stop:
+					return
+
+				io = self.queue.get()
+
+				if not self.time_first:
+					self.time_first = io.time
+
+				if not self.asap:
+					tdiff = (io.time - self.time_first) / self.speed - ((time.time() - self.time_begin))
 					if tdiff > 0:
-	 #  	             print "sleeping", tdiff, time.time() - time_begin, io.time
 						time.sleep(tdiff)
-					elif tdiff < -0.02 and framedrop:
+					elif tdiff < -0.02 and self.framedrop:
 						print "warning: skipping frame (lagging %dms)" % abs(tdiff * 1000)
-						skipped_frames += 1
+#						self.skipped_frames += 1
+						self.queue.task_done() 
 						continue
 
-				block = size_align(io.block + offset, 512)
+				io.block = size_align(io.block + self.offset, 512)
 
-				if block != os.lseek(fps[io.disk], block, 0):
-					print "got different block than asked", block
+				try:
+					os.lseek(self.open_disk(io), io.block, 0)
+				except OSError:
+					print "illegal seek? asked for", io.block
+					self.queue.task_done() 
+					continue
 
 				timer = time.time()
 
@@ -432,7 +538,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 					do_bytes = size_align(io.length - done_bytes, 512)
 					do_bytes = min( [512 * 518, do_bytes] )
 
-					txt = directio.read(fps[io.disk], do_bytes)
+					txt = directio.read(self.fps[io.disk]["fp"], do_bytes)
 
 					if len(txt) == 0:
 						break
@@ -441,25 +547,54 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 
 				del txt
 				if done_bytes < io.length:
-					print "short read/write, block %d, wanted %d bytes, read %d bytes" % (block, io.length, done_bytes)
+					print "short read/write, block %d, wanted %d bytes, read %d bytes" % (io.block, io.length, done_bytes)
 
-				print "read/write, block %d, wanted %d bytes, read %d bytes" % (block, io.length, done_bytes)
+#				print "read/write, block %d, wanted %d bytes, read %d bytes" % (io.block, io.length, done_bytes)
 
-				srv_time.push(time.time() - timer)
-				if not asap:
-					await.push(time.time() - (time_begin + (io.time - time_first)) )
+				self.await.push(time.time() - timer)
 
-				if srv_time.pushed % 10 == 0:
-					print await, srv_time, "skipped %d%% frames" % (skipped_frames * 100 / srv_time.pushed)
+				self.queue.task_done() 
 
+		def push(self, io):
+
+			self.queue.put(io)
+
+		def finished(self):
+
+			return not self.pop_thread.isAlive() and self.queue.empty()
+
+		def terminate(self):
+
+			self.kindly_stop = True
+
+			while not self.queue.empty(): 
+				self.queue.get_nowait() 
+				self.queue.task_done() 
+
+		def join(self):
+
+			self.queue.join()
+
+
+	def replay(self, read_only = True, make_writes_as_reads = False, speed = 1, disk_to_disk = {}, asap = False, framedrop = False, offset = False):
+
+		try:
+			import directio
+		except ImportError:
+			print "directio does not appear to be available, I/O replay needs this module to work."
+			sys.exit(1)
+
+		io_engine = self.ioreplay_engine_class(ios = self.ios_from_file(), disk_to_disk = disk_to_disk)
+
+		io_engine.start()
+
+		try:
+			while not io_engine.finished():
+				time.sleep(1)
+				print io_engine.await.pushed, io_engine.await, io_engine.queue.qsize()
 		except KeyboardInterrupt:
-			print "Keyboard interrupt caught, terminating."
-
-		for fp in fps.values():
-#			fp.close()
-			directio.close(fp)
-                        
-		print srv_time, (skipped_frames * 100 / srv_time.pushed)
+			print "exiting."
+			io_engine.terminate()
 
 def seq_random_analysis(ios):
 
@@ -509,11 +644,11 @@ class OptionParser_extended(OptionParser):
         print
         print " draw a text-based graph showing activity (iops and throughput) per second:"
         print 
-        print "   # ioanalyse -g -s dump.csv"
+        print "   # tiboo -g -s dump.csv"
         print 
         print """ analyse an I/O dump considering "sdb" only, stop at timestamp 1211881488,\n write output to screen and to file (results.txt):"""
         print 
-        print "   # ioanalyse -s dump.csv -e 1211881488 --only-disk sdb | tee results.txt"
+        print "   # tiboo -s dump.csv -e 1211881488 --only-disk sdb | tee results.txt"
         print 
 
 class Navid_Option (Option):
