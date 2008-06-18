@@ -2,14 +2,38 @@
 
 # (C) navid@navid.it
 
+import os
 import re, time, pdb, sys, getopt, datetime, commands
 from optparse import OptionParser, Option
 
 # scsi_logging_level.sh -c -H 3
 # sysctl dev.scsi.logging_level=56623104
 
+# echo 1 > /proc/sys/vm/block_dump
+
 def usage():
-   print "iodump"
+	print "iodump"
+
+def iodump_stap():
+
+	if os.geteuid() != 0 and os.getgroups() not in [ "stapdev" ,"stapusr" ]:
+		print """you must be either root or in groups "stapdev" or "stapusr" to do this."""
+		sys.exit()
+
+	r = os.popen('/usr/bin/stap -g iodump.stp', 'r')
+
+	outbuf = ""
+	line = "hola"
+
+	try:
+		while len(line) > 0:
+			line = r.readline()
+			outbuf += line
+	except KeyboardInterrupt:
+		pass
+
+	r.close()
+	return outbuf
 
 re_c = re.compile(r"""^\<[0-9]>sd (?P<scsi_id>\S+): \[(?P<disk>\S+)\] sd_init_command: block=(?P<block>[0-9]+), count=(?P<count>[0-9]+)\n""" +
 """\<[0-9]>sd \S+: \[\S+\] block=[0-9]+\n""" +
