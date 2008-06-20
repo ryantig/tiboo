@@ -27,7 +27,7 @@ class time_warp_class:
 		self.dump_stime = dump_stime
 
 		if not real_stime:
-			self.real_stime = time() + 5
+			self.real_stime = time() + 2
 		else:
 			self.real_stime = real_stime
 
@@ -95,6 +95,19 @@ class fd_table:
 			try: return os.lseek(fd, pos, whence)
 			except IOError: print "cannot seek there"
 			except OSError: print "cannot seek there", self.table
+
+	def read(self, virtual_fd, bytes):
+		fd = self.get_fd(virtual_fd)
+		if not fd:
+			return
+
+		return len(os.read(fd, bytes))
+
+	def write(self, virtual_fd, bytes):
+		fd = self.get_fd(virtual_fd)
+		if not fd:
+			return
+		return os.write(fd, "a" * bytes)
 
 	def dup2(self, virtual_fd, newfd):
 		virtual_fd = int(virtual_fd)
@@ -331,36 +344,44 @@ class io_process:
 					"not opening", fps.vfname_to_name, op.fname
 					continue
 
-				retcode = fps.open_file(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = "r")
+				retcode = fps.open_file(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = "w")
+
 				if retcode == None:
 					continue
+
+				if retcode != op.retcode:
+					print "[ERROR] invalid open", retcode, op.retcode
 
 			elif op.optype == OP_TYPE_DUP:
 				retcode = fps.dup2(virtual_fd = op.fd, newfd = op.retcode)
 
 			elif op.optype == OP_TYPE_DUP2:
 				retcode = fps.dup2(virtual_fd = op.fd, newfd = op.newfd)
+				if retcode != op.retcode:
+					print "[ERROR] invalid dup2", retcode, op.retcode
 
 			elif op.optype == OP_TYPE_LSEEK:
 				retcode = fps.lseek(virtual_fd = op.fd, pos = op.block, whence = op.whence)
+				if retcode != op.retcode:
+					print "[ERROR] invalid seek", retcode, op.retcode
 
 			elif op.optype == OP_TYPE_CLOSE:
 				retcode = fps.close(virtual_fd = op.fd)
 
-			elif op.optype in [ OP_TYPE_READ, OP_TYPE_WRITE ]:
-				fd = fps.get_fd(op.fd)
-				if not fd:
-					print "what? FD not open", op.fd
-					continue
-
-				retcode = len(os.read(fd, op.size))
+			elif op.optype == OP_TYPE_READ:
+				retcode = fps.read(virtual_fd = op.fd, bytes = op.size)
 				if retcode != op.retcode:
 					print "[WARNING] short read!", retcode, op.retcode
+
+			elif op.optype == OP_TYPE_WRITE:
+				retcode = fps.write(virtual_fd = op.fd, bytes = op.size)
+				if retcode != op.retcode:
+					print "[WARNING] short write!", retcode, op.retcode
 
 			else:
 				print "unhandled optype", op.optype
 
-			print "%s [%s] %s = %s" % (time_warp.time_elapsed(), self.vpid, op.print_call(), retcode)
+			print "%s [vpid %s] %s = %s" % (time_warp.time_elapsed(), self.vpid, op.print_call(), retcode)
 
 __cmdParser__ = OptionParser()
 
@@ -405,10 +426,6 @@ if not __cmdLineOpts__.workdir:
 
 fps = fd_table()
 
-for op in appdump_file.walk_ops():
-	time_warp = time_warp_class(dump_stime = op.tstamp)
-	break
-
 vthreads = {}
 
 print "Creating temporary files..."
@@ -432,14 +449,23 @@ for vfname in appdump_file.file_and_sizes:
 		print "[ERROR] file %s already exists." % fps.vfname_to_name[vfname]
 		sys.exit(1)
 	fp = open(fps.vfname_to_name[vfname], "w")
-	fp.write("a" * appdump_file.file_and_sizes[vfname])
+	towrite = appdump_file.file_and_sizes[vfname]
+	while towrite > 0:
+		fp.write("a" * min([towrite, 4096]))
+		towrite-=4096
 	fp.close()
 	print " - %s -> %s (%d bytes)" % (vfname, fps.vfname_to_name[vfname], appdump_file.file_and_sizes[vfname])
 	inc += 1
 
 print "Done."
 
+time_warp = None
+
 for op in appdump_file.walk_ops():
+
+	if time_warp == None:
+		time_warp = time_warp_class(dump_stime = op.tstamp)
+
 	if not vthreads.has_key(op.pid):
 		print "spawning new process", op.pid
 		vthreads[op.pid] = io_process(vpid = op.pid)
