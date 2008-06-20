@@ -8,6 +8,7 @@ from stat import *
 import pdb
 import re
 from optparse import OptionParser, Option
+from time import sleep
 
 __cmdParser__ = OptionParser()
 __cmdParser__.add_option("-o", "--output", metavar="FILE", \
@@ -37,9 +38,17 @@ re_c = re.compile(r"""^(?P<pid>\S+) (?P<timestamp>\S+)\s+(?P<syscall>\S+)\((?P<a
 
 print
 
-os.system('''/usr/bin/strace -q -o /tmp/output.strace -T -e open,dup,fcntl,dup2,lseek,read,write,close,unlink,unlinkat -ttt -vv -s 0 -f %s''' % __cmdLineOpts__.cmd)
+tmppipe = os.tmpnam()
+os.mkfifo(tmppipe)
 
-r = open("/tmp/output.strace")
+pid = os.fork()
+
+if not pid:
+	sleep(1)
+	os.system('''/usr/bin/strace -q -o %s -T -e open,dup,fcntl,dup2,lseek,read,write,close,unlink,unlinkat -ttt -vv -s 0 -f %s''' % (tmppipe, __cmdLineOpts__.cmd) )
+	sys.exit()
+
+r = open(tmppipe, "r")
 
 fp.write("%cmdline\n")
 fp.write("%s\n" % __cmdLineOpts__.cmd)
