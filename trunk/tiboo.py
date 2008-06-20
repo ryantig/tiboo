@@ -219,22 +219,12 @@ set datafile separator ","
 set ytics auto
 set xtic rotate by -45
 set auto y
-''')
-
-#		fp.write('''
-#set xrange [1213263960:1213287292]''')
-
-#plot 	"<awk 'BEGIN {FS=\\",\\"} { tt+=$7*$8; ret[$7*$8]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100}' %s" using 1/1024:2 with boxes lt 2 fs ti col solid title 'Number of requests (%%)', \
-#	"<awk 'BEGIN {FS=\\",\\"} { ios+=1;    ret[$7*$8]+=1 } END { for (x in ret) print x\\",\\"ret[x]/ios*100 }' %s" using 1/1024:2 with boxes lt 1 fs ti col solid title 'Data transferred (%%)'
-
-		fp.write('''
 
 set term postscript eps enhanced color size 15,10 font 20
 
-# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} {}.png \;
-# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -density 150x150 {} data/logo.png -gravity center -composite -format png {}.png \;
+# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -transparent white -density 150x150 {} data/logo.png -gravity center -composite -format png {}.png \;
 
-set title "I/O size (data tranferred for size)"
+set title "I/O size (data tranferred for size)" font ",40"
 set xlabel "Request size (KiB)"
 set ylabel "Percentage"
 
@@ -242,7 +232,7 @@ set ylabel "Percentage"
 set style histogram clustered gap 2 title offset character 0, 0, 0
 set style fill solid border -1
 
-set xtics font ",12"
+set xtics font ",14"
 set xrange [0:]
 set yrange [0:]
 
@@ -256,12 +246,13 @@ set xrange [*:*] noreverse nowriteback
 set yrange [*:*] noreverse nowriteback
 set xtics auto font ""
 set mxtics default
-set xlabel "UNIX Timestamp"
 set style fill solid noborder
 #set format y "%%d"
-set format x "%%Y-%%m-%%d %%H:%%M:%%S"
+set format x "%%Y-%%m-%%d\\n\\n%%H:%%M:%%S"
 set timefmt "%%s"
 set xdata time
+unset xlabel
+#set xrange [1213275298:1213275518]
 
 # LBA access
 
@@ -270,10 +261,15 @@ set ylabel "LBA (offset)"
 
 set output 'tmp/graph_seeks.eps'
 
-plot	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 0   && iosize <= 32  ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'size <= 32KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'size <= 128KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'size <= 1024KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'size > 1MiB'
+plot	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'read size <= 32KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'read size <= 128KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'read size <= 1024KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'read size > 1MiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#81a5ff" pt 7 ps 0.4 title 'write size <= 32KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#4d7fff" pt 7 ps 0.5 title 'write size <= 128KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2865ff" pt 7 ps 0.7 title 'write size <= 1024KiB', \
+	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#0048ff" pt 7 ps 0.9 title 'write size > 1MiB'
+
 
 # Bandwidth
 
@@ -291,8 +287,8 @@ set ylabel "iops"
 
 set output 'tmp/graph_iops.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"''' % \
-		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
+''' % 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
 
 		fp.close()
 
@@ -609,6 +605,13 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\"
 		except KeyboardInterrupt:
 			print "exiting."
 			io_engine.terminate()
+
+class IO_Replay_userspace(io_set_class):
+
+	# strace -T -e trace=file -ttt -s 0 -f cat /etc/passwd > /dev/null 
+
+	pass
+
 
 def seq_random_analysis(ios):
 
