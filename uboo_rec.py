@@ -9,6 +9,7 @@ import pdb
 import re
 from optparse import OptionParser, Option
 from time import sleep
+from tempfile import gettempdir
 
 __cmdParser__ = OptionParser()
 __cmdParser__.add_option("-o", "--output", metavar="FILE", \
@@ -38,7 +39,7 @@ re_c = re.compile(r"""^(?P<pid>\S+) (?P<timestamp>\S+)\s+(?P<syscall>\S+)\((?P<a
 
 print
 
-tmppipe = os.tmpnam()
+tmppipe = "%s/uboo-%d.pipe" % (gettempdir(), os.getpid())
 os.mkfifo(tmppipe)
 
 pid = os.fork()
