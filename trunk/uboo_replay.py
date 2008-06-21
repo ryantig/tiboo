@@ -362,7 +362,9 @@ class io_process:
 			op = self.opq.get()
 
 			if op.optype != OP_TYPE_OPEN and not fps.is_vfd_valid(op.fd):
-#				print "skipping", op
+				continue
+
+			if op.optype == OP_TYPE_OPEN and not fps.vfname_to_name.has_key(op.fname):
 				continue
 
 			time_warp.wait_until_vtime(op.tstamp)
@@ -370,10 +372,6 @@ class io_process:
 			retcode = None
 
 			if op.optype == OP_TYPE_OPEN:
-
-				if not fps.vfname_to_name.has_key(op.fname):
-					"not opening", fps.vfname_to_name, op.fname
-					continue
 
 				retcode = fps.open(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = op.mode)
 
