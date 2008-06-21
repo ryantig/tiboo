@@ -59,7 +59,7 @@ class fd_table:
 	table = {}
 	vfname_to_name = {}
 
-	def open_file(self, virtual_fd, fname, mode):
+	def open(self, virtual_fd, fname, mode):
 
 		virtual_fd = int(virtual_fd)
 
@@ -194,6 +194,18 @@ class appdump_file:
 
 					self.file_and_sizes[line[0]] = int(line[1])
 
+	def convert_args_string_to_int(self, args):
+
+		tab = { "O_RDWR":os.O_RDWR, "O_WRONLY":os.O_WRONLY, "O_RDONLY":os.O_RDONLY, "O_NONBLOCK":os.O_NONBLOCK, "O_DIRECTORY":os.O_DIRECTORY }
+
+		toret = 0
+		for xarg in args.split("|"):
+			try: toret = toret | tab[xarg]
+			except KeyError:
+				print xarg
+				toret = toret | int(xarg, 16)
+		return toret
+
 	def walk_ops(self):
 
 		self.fp.seek(0)
@@ -228,7 +240,7 @@ class appdump_file:
 			if op.optype == "open":
 				op.optype = OP_TYPE_OPEN
 				op.fname = args[0]
-				op.mode = args[1]
+				op.mode = self.convert_args_string_to_int(args[1])
 
 			elif op.optype == "dup":
 				op.optype = OP_TYPE_DUP
@@ -363,7 +375,7 @@ class io_process:
 					"not opening", fps.vfname_to_name, op.fname
 					continue
 
-				retcode = fps.open_file(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = os.O_RDWR)
+				retcode = fps.open(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = op.mode)
 
 				if retcode == None:
 					continue
