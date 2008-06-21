@@ -54,57 +54,54 @@ class fd_table:
 
 	from threading import Lock
 
-	SKIP_FD = -1
-
 	_lock = Lock()
 
 	table = {}
 	vfname_to_name = {}
 
 	def open_file(self, virtual_fd, fname, mode):
+
 		virtual_fd = int(virtual_fd)
+
 		self._lock.acquire()
-
-#		self.table[virtual_fd] = open(fname, mode)
 		self.table[virtual_fd] = os.open(fname, mode)
-
-#		print "opened %s as %s (vfd %s)" % (fname, self.table[virtual_fd], virtual_fd)
-
 		self._lock.release()
-		return virtual_fd
 
-	def get_fp(self, virtual_fd):
-		virtual_fd = int(virtual_fd)
-		try: return self.table[virtual_fd]
-		except KeyError: return False
+		return virtual_fd
 
 	def is_vfd_valid(self, vfd):
 		try:	return self.get_fd(vfd) not in [ None, False ]
 		except: return False
-			
 
 	def get_fd(self, virtual_fd):
+
 		virtual_fd = int(virtual_fd)
 
-		try: return self.table[virtual_fd]
-		except KeyError: return False
+		try:	return self.table[virtual_fd]
+		except KeyError:
+			return False
 
 		try: return self.table[virtual_fd].fileno()
 		except KeyError: return False
 
 	def lseek(self, virtual_fd, pos, whence):
+
 		fd = self.get_fd(virtual_fd)
+
 		if not fd:
-			print "[ERROR] no such fd"
+			print "[ERROR] lseek to inexisting vfd %d" % virtual_fd
 			return
+
 		try: return os.lseek(fd, pos, whence)
 		except IOError: print "cannot seek there"
 		except OSError: print "cannot seek there", self.table
 
 	def read(self, virtual_fd, bytes):
+
 		fd = self.get_fd(virtual_fd)
 
 		if not fd:
+			print "[ERROR] read to inexisting vfd %d" % virtual_fd
 			return
 
 		try: return len(os.read(fd, bytes))
@@ -113,8 +110,11 @@ class fd_table:
 			return -1
 
 	def write(self, virtual_fd, bytes):
+
 		fd = self.get_fd(virtual_fd)
+
 		if not fd:
+			print "[ERROR] write to inexisting vfd %d" % virtual_fd
 			return
 
 		try: return os.write(fd, "a" * bytes)
@@ -125,24 +125,30 @@ class fd_table:
 			return -1
 
 	def dup2(self, virtual_fd, newfd):
-		virtual_fd = int(virtual_fd)
-		newfd = int(newfd)
+
 		fd = self.get_fd(virtual_fd)
+
 		if not fd:
+			print "[ERROR] dup to inexisting vfd %d" % virtual_fd
 			return
-		newfp = self.get_fd(newfd)
-		if newfp:
+
+		newfd = self.get_fd(newfd)
+
+		if newfd:
 			self.close(newfd)
+
 		self._lock.acquire()
 		self.table[newfd] = os.dup(fd)
 		self._lock.release()
+
 		return newfd
 
 	def close(self, virtual_fd):
+
 		fd = self.get_fd(virtual_fd)
 
 		if not fd:
-			print "not closing unexisting vfd", virtual_fd
+			print "[ERROR] close to inexisting vfd %d" % virtual_fd
 			return
 
 		os.close(fd)
@@ -490,7 +496,8 @@ for op in appdump_file.walk_ops():
 
 from time import sleep
 
-try: sleep(3600)
-except KeyboardInterrupt: pass
+try:	sleep(3600)
+except KeyboardInterrupt:
+	print "[INFO] caught keyboard interrupt, exiting."
 
 os.system('''rm -rf "%s"''' % __cmdLineOpts__.workdir)
