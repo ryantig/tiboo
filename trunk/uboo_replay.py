@@ -48,7 +48,7 @@ class time_warp_class:
 				print "sleeping for %.2fs" % (delta)
 			sleep(delta)
 		elif delta < -0.1:
-			print "lagging of %.2fs!!!" % delta
+			print "[WARNING] lagging behind %.2fs!!!" % delta
 
 class fd_table:
 
@@ -65,7 +65,8 @@ class fd_table:
 		virtual_fd = int(virtual_fd)
 		self._lock.acquire()
 
-		self.table[virtual_fd] = open(fname, mode)
+#		self.table[virtual_fd] = open(fname, mode)
+		self.table[virtual_fd] = os.open(fname, mode)
 
 #		print "opened %s as %s (vfd %s)" % (fname, self.table[virtual_fd], virtual_fd)
 
@@ -84,55 +85,67 @@ class fd_table:
 
 	def get_fd(self, virtual_fd):
 		virtual_fd = int(virtual_fd)
+
+		try: return self.table[virtual_fd]
+		except KeyError: return False
+
 		try: return self.table[virtual_fd].fileno()
 		except KeyError: return False
-#		except AttributeError: return False
 
 	def lseek(self, virtual_fd, pos, whence):
 		fd = self.get_fd(virtual_fd)
-		if fd:
-#			print "asked to seek", virtual_fd, fd, pos, whence
-			try: return os.lseek(fd, pos, whence)
-			except IOError: print "cannot seek there"
-			except OSError: print "cannot seek there", self.table
+		if not fd:
+			print "[ERROR] no such fd"
+			return
+		try: return os.lseek(fd, pos, whence)
+		except IOError: print "cannot seek there"
+		except OSError: print "cannot seek there", self.table
 
 	def read(self, virtual_fd, bytes):
 		fd = self.get_fd(virtual_fd)
+
 		if not fd:
 			return
 
-		return len(os.read(fd, bytes))
+		try: return len(os.read(fd, bytes))
+		except OSError:
+			print "[ERROR} reading %d bytes from vfd %d" % (bytes, virtual_fd)
+			return -1
 
 	def write(self, virtual_fd, bytes):
 		fd = self.get_fd(virtual_fd)
 		if not fd:
 			return
-		return os.write(fd, "a" * bytes)
+
+		try: return os.write(fd, "a" * bytes)
+		except OSError:
+			print "[ERROR} writing %d bytes to vfd %d" % (bytes, virtual_fd)
+			print os.lseek(fd, 0, 1), os.read(fd, 4)
+#			sys.exit()
+			return -1
 
 	def dup2(self, virtual_fd, newfd):
 		virtual_fd = int(virtual_fd)
 		newfd = int(newfd)
 		fd = self.get_fd(virtual_fd)
-		if not fp:
+		if not fd:
 			return
 		newfp = self.get_fd(newfd)
 		if newfp:
 			self.close(newfd)
 		self._lock.acquire()
-		self.table[newfd] = os.fdopen( os.dup(fd) )
+		self.table[newfd] = os.dup(fd)
 		self._lock.release()
-		return fd
+		return newfd
 
 	def close(self, virtual_fd):
-		virtual_fd = int(virtual_fd)
+		fd = self.get_fd(virtual_fd)
 
-		fp = self.get_fp(virtual_fd)
-		if not fp:
+		if not fd:
 			print "not closing unexisting vfd", virtual_fd
 			return
-		fp.close()
 
-#		print "closing vfd", virtual_fd
+		os.close(fd)
 
 		self._lock.acquire()
 		del self.table[virtual_fd]
@@ -344,7 +357,7 @@ class io_process:
 					"not opening", fps.vfname_to_name, op.fname
 					continue
 
-				retcode = fps.open_file(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = "w")
+				retcode = fps.open_file(virtual_fd = op.retcode, fname = fps.vfname_to_name[op.fname], mode = os.O_RDWR)
 
 				if retcode == None:
 					continue
@@ -466,6 +479,8 @@ for op in appdump_file.walk_ops():
 	if time_warp == None:
 		time_warp = time_warp_class(dump_stime = op.tstamp)
 
+	op.pid = "main"
+
 	if not vthreads.has_key(op.pid):
 		print "spawning new process", op.pid
 		vthreads[op.pid] = io_process(vpid = op.pid)
@@ -474,5 +489,8 @@ for op in appdump_file.walk_ops():
 	vthreads[op.pid].opq.put(op)
 
 from time import sleep
-sleep(3600)
-os.system("rm -rf /tmp/prova")
+
+try: sleep(3600)
+except KeyboardInterrupt: pass
+
+os.system('''rm -rf "%s"''' % __cmdLineOpts__.workdir)
