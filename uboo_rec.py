@@ -67,8 +67,7 @@ try:
 			break
 
 		if not re_c.match(line):
-			print "cannot parse line", line
-#			pdb.set_trace()
+			fp.write( "# cannot parse line: %s\n" % line
 			continue
 
 		ret = re_c.findall(line)[0]
@@ -98,15 +97,6 @@ try:
 
 			try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
 			except:	fsizes[fname] = -1
-
-#		else:
-#			fd = int(args.split(",")[0])
-#			os.system("ls /proc/%s/fd" % pid)
-
-#			fname = os.readlink("/proc/%d/fd/%d" % (pid,fd))
-#			if not fsizes.has_key(fname):
-#				try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
-#				except:	print "WEIRD"
 
 except KeyboardInterrupt:
 	print "Keyboard interrupt."
