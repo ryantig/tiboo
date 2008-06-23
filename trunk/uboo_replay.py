@@ -21,6 +21,9 @@ OP_TYPE_READ  = 18
 OP_TYPE_WRITE = 20
 OP_TYPE_CLOSE = 22
 
+SPEED_ASAP = 0
+SPEED_NORMAL = 1
+
 class time_warp_class:
 
 	def __init__(self, dump_stime, real_stime = None):
@@ -45,8 +48,7 @@ class time_warp_class:
 	def wait_until_vtime(self, vtime):
 		delta = vtime - self.vtime()
 		if delta > 0:
-			if delta > 1:
-				print "sleeping for %.2fs" % (delta)
+#			print "sleeping for %.2fs" % (delta)
 			sleep(delta)
 		elif delta < -0.1:
 			print "[WARNING] lagging behind %.2fs!!!" % delta
@@ -63,8 +65,8 @@ class fd_table:
 	table = {}
 	vfname_to_name = {}
 
-	read_time_stats  = min_avg_max_class("read_time")
-	write_time_stats = min_avg_max_class("write_time")
+	read_time_stats  = min_avg_max_class("read_time", unit = "s", base = 1000)
+	write_time_stats = min_avg_max_class("write_time", unit = "s", base = 1000)
 
 	def open(self, virtual_fd, fname, mode):
 
@@ -355,6 +357,9 @@ class io_process:
 
 	opq = Queue()
 
+	speed = SPEED_ASAP
+#	speed = SPEED_NORMAL
+
 	def __init__(self, vpid):
 		if vpid != None:
 			self.vpid = vpid
@@ -382,7 +387,8 @@ class io_process:
 			if op.optype == OP_TYPE_OPEN and not fps.vfname_to_name.has_key(op.fname):
 				continue
 
-			delta = time_warp.wait_until_vtime(op.tstamp)
+			if self.speed == SPEED_NORMAL:
+				time_warp.wait_until_vtime(op.tstamp)
 
 			retcode = None
 
@@ -425,7 +431,7 @@ class io_process:
 			else:
 				print "unhandled optype", op.optype
 
-			print "%s [vpid %s] %s = %s" % (time_warp.time_elapsed(), self.vpid, op.print_call(), retcode)
+#			print "%s [vpid %s] %s = %s" % (time_warp.time_elapsed(), self.vpid, op.print_call(), retcode)
 
 __cmdParser__ = OptionParser()
 
@@ -519,13 +525,16 @@ for op in appdump_file.walk_ops():
 
 	vthreads[op.pid].opq.put(op)
 
-from time import sleep
-
-
 try:
 	while True:
 		print fps.read_time_stats, fps.write_time_stats
 		sleep(1)
+		for vt in vthreads:
+			if vthreads[vt].opq.qsize() > 0:
+				break
+		else:
+			break
+
 except KeyboardInterrupt:
 	print "[INFO] caught keyboard interrupt, exiting."
 
