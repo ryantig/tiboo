@@ -57,6 +57,7 @@ fp.write("%s\n" % __cmdLineOpts__.cmd)
 fp.write("%dump\n# timestamp,pid,syscall(args),return_value,time_elapsed\n")
 
 fsizes = {}
+fdmap = {}
 
 lines = 0
 try:
@@ -67,7 +68,7 @@ try:
 			break
 
 		if not re_c.match(line):
-			fp.write( "# cannot parse line: %s\n" % line
+			fp.write( "# cannot parse line: %s\n" % line)
 			continue
 
 		ret = re_c.findall(line)[0]
@@ -92,11 +93,45 @@ try:
 		if syscall == "open":
 			fname = args.split("|")[0]
 
-			if not os.path.isfile(fname):
-				continue
+#			if not os.path.isfile(fname):
+#				continue
 
 			try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
 			except:	fsizes[fname] = -1
+
+		elif not syscall in "unlink":
+
+			# all other syscalls take "fd" as their first argument
+			fd = int(args.split("|")[0])
+
+			if syscall == "close":
+
+				if fdmap.has_key(fd):
+					del fdmap[fd]
+				else:
+					fp.write( "# couldn't resolve fd %s\n" % (fd))
+
+			else:
+
+				if fdmap.has_key(fd):
+					continue
+
+				try:	fname = os.readlink("/proc/%d/fd/%d" % (int(pid), int(fd)))
+				except OSError:
+					fp.write( "# couldn't resolve fd %d for pid %d\n" % (fd, pid))
+					pass
+
+				print fname
+
+#				if not os.path.isfile(fname):
+#					continue
+
+				fdmap[fd] = fname
+
+				try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
+				except:	fsizes[fname] = -1
+
+			
 
 except KeyboardInterrupt:
 	print "Keyboard interrupt."

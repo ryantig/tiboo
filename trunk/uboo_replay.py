@@ -50,6 +50,8 @@ class time_warp_class:
 		elif delta < -0.1:
 			print "[WARNING] lagging behind %.2fs!!!" % delta
 
+		return delta
+
 class fd_table:
 
 	from threading import Lock
@@ -221,7 +223,7 @@ class appdump_file:
 		while len(line):
 			line = self.fp.readline()
 
-			if line.startswith('#'):
+			if line.startswith('#') or len(line) < 5:
 				continue
 
 			if line.startswith('%'):
@@ -231,7 +233,9 @@ class appdump_file:
 
 			op = io_op()
 
-			op.tstamp = float(line[0])
+			try:	op.tstamp = float(line[0])
+			except: continue
+
 			try: op.pid = int(line[1])
 			except: pass
 			op.optype, args = line[2].split("|", 1)
@@ -367,7 +371,7 @@ class io_process:
 			if op.optype == OP_TYPE_OPEN and not fps.vfname_to_name.has_key(op.fname):
 				continue
 
-			time_warp.wait_until_vtime(op.tstamp)
+			delta = time_warp.wait_until_vtime(op.tstamp)
 
 			retcode = None
 
