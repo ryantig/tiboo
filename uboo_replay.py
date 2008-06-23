@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 
-
 # (C) navid@navid.it
 
 import os
 import sys
 import re
 from stat import *
-from time import time, sleep
+from time import time, sleep, clock
 import pdb
 from optparse import OptionParser, Option
+
+from common import *
 
 OP_TYPE_OPEN  = 10
 OP_TYPE_DUP   = 12
@@ -55,11 +56,15 @@ class time_warp_class:
 class fd_table:
 
 	from threading import Lock
+	from common import min_avg_max_class
 
 	_lock = Lock()
 
 	table = {}
 	vfname_to_name = {}
+
+	read_time_stats  = min_avg_max_class("read_time")
+	write_time_stats = min_avg_max_class("write_time")
 
 	def open(self, virtual_fd, fname, mode):
 
@@ -106,7 +111,11 @@ class fd_table:
 			print "[ERROR] read to inexisting vfd %d" % virtual_fd
 			return
 
-		try: return len(os.read(fd, bytes))
+		try:
+			t = time()
+			toret = len(os.read(fd, bytes))
+			self.read_time_stats.push( time() - t )
+			return toret
 		except OSError:
 			print "[ERROR} reading %d bytes from vfd %d" % (bytes, virtual_fd)
 			return -1
@@ -119,11 +128,13 @@ class fd_table:
 			print "[ERROR] write to inexisting vfd %d" % virtual_fd
 			return
 
-		try: return os.write(fd, "a" * bytes)
+		try:
+			t = time()
+			toret = os.write(fd, "a" * bytes)
+			self.write_time_stats.push( time() - t )
+			return toret
 		except OSError:
 			print "[ERROR} writing %d bytes to vfd %d" % (bytes, virtual_fd)
-			print os.lseek(fd, 0, 1), os.read(fd, 4)
-#			sys.exit()
 			return -1
 
 	def dup2(self, virtual_fd, newfd):
@@ -510,7 +521,11 @@ for op in appdump_file.walk_ops():
 
 from time import sleep
 
-try:	sleep(3600)
+
+try:
+	while True:
+		print fps.read_time_stats, fps.write_time_stats
+		sleep(1)
 except KeyboardInterrupt:
 	print "[INFO] caught keyboard interrupt, exiting."
 
