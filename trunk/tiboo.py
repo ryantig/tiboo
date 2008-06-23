@@ -6,35 +6,9 @@ import random
 
 from optparse import OptionParser, Option
 
+from common import *
+
 OPTIONS = { "rw_breakdown":False }
-
-def human_byte_sizes(value):
-    return human_value(value, 1024, "B")
-
-def human_value(value, base = 1000, unit = ""):
-
-	if value == None:
-		return "-"
-		
-	if value >= pow(base, 3):
-		return "%.1fG%s" % (value / pow(base, 3), unit)
-
-	if value >= pow(base, 2):
-		return "%.1fM%s" % (value / pow(base, 2), unit)
-
-	if value >= base:
-		return "%.1fK%s" % (value / base, unit)
-
-	if value >= 1:
-		return "%d%s" % (value, unit)
-		
-	if value == 0:
-		return "0"
-		
-	if base == 1000:
-		return "%dm%s" % (value * base, unit)
-
-	return "%2.2f%s" % (value, unit)
 
 def size_align(value, align):
 	spare = value % align
@@ -67,69 +41,6 @@ def merge_stats(name, v1, v2):
 	
 	return toret
 
-class min_avg_max_class:
-
-	def clear(self):
-
-		self.min = None
-		self.max = None
-		self.sum = 0
-		self.pushed = 0
-
-	def __init__(self, name, value = None, base = 1000, unit = "", thread_safe = False):
-
-		self.name = name
-		self.base = base
-		self.unit = unit
-
-		self.clear()
-
-		if thread_safe:
-			from threading import Lock
-			self._threadlock = Lock()
-		else:
-			self._threadlock = None
-
-		if value:
-			self.push(value)
-
-	def lock_acquire(self):
-		if self._threadlock:
-			self._threadlock.acquire()
-
-	def lock_release(self):
-		if self._threadlock:
-			self._threadlock.release()
-
-	def push(self, value):
-
-		if type(value) == list:
-			for x in value:
-				self.push(x)
-			return
-
-		value = float(value)
-
-		self.lock_acquire()
-
-		if self.min == None or value < self.min:
-			self.min = value
-
-		if self.max == None or value > self.max:
-			self.max = value
-
-		self.sum += value
-		self.pushed += 1
-
-		self.lock_release()
-		
-	def avg(self):
-		try:	return float(self.sum / self.pushed)
-		except:	return None
-
-	def __str__(self):
-		return """%s(min/avg/max):%s/%s/%s""" % (self.name, human_value(self.min, self.base, self.unit), human_value(self.avg(), self.base, self.unit), human_value(self.max, self.base, self.unit))
-        
 class io_class:
 
 	def __init__(self, time, r_or_w, sector, disk = None, host = None, length = None, sectors = None, sector_size = None, retcode = None):
@@ -261,15 +172,17 @@ set ylabel "LBA (offset)"
 
 set output 'tmp/graph_seeks.eps'
 
-plot	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'read size <= 32KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'read size <= 128KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'read size <= 1024KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'read size > 1MiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#81a5ff" pt 7 ps 0.4 title 'write size <= 32KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#4d7fff" pt 7 ps 0.5 title 'write size <= 128KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2865ff" pt 7 ps 0.7 title 'write size <= 1024KiB', \
-	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#0048ff" pt 7 ps 0.9 title 'write size > 1MiB'
+#plot	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'read size <= 32KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'read size <= 128KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'read size <= 1024KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'read size > 1MiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#81a5ff" pt 7 ps 0.4 title 'write size <= 32KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#4d7fff" pt 7 ps 0.5 title 'write size <= 128KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2865ff" pt 7 ps 0.7 title 'write size <= 1024KiB', \
+#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#0048ff" pt 7 ps 0.9 title 'write size > 1MiB'
 
+plot	"<awk 'BEGIN {FS=\\",\\"} { ps=$7*$8/1024/150; if ($5 != \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' %s" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
+	"" using 1:2:4 with points lt rgb "#0048ff" pt 7 ps variable title 'writes'
 
 # Bandwidth
 
@@ -288,7 +201,7 @@ set ylabel "iops"
 set output 'tmp/graph_iops.eps'
 
 plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
-''' % 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
+''' % 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
 
 		fp.close()
 
