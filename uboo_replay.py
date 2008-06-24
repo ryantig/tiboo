@@ -47,7 +47,7 @@ class time_warp_class:
 
 	def wait_until_vtime(self, vtime):
 		delta = vtime - self.vtime()
-		if delta > 0:
+		if delta > __cmdLineOpts__.min_pause:
 #			print "sleeping for %.2fs" % (delta)
 			sleep(delta)
 		elif delta < -0.1:
@@ -363,7 +363,7 @@ class io_process:
 	opq = Queue()
 
 	speed = SPEED_ASAP
-#	speed = SPEED_NORMAL
+	speed = SPEED_NORMAL
 
 	def __init__(self, vpid):
 		if vpid != None:
@@ -453,6 +453,10 @@ __cmdParser__.add_option("-w", "--workdir", metavar="DIR", \
 __cmdParser__.add_option("-p", "--pattern", metavar="PATTERN", \
 			dest="pattern", type = "string", \
 			help="replay I/O for files that match this mattern (comma separated list allowed)")
+
+__cmdParser__.add_option("--minpause", metavar="SECONDS", \
+			dest="min_pause", type = "int", default=3, \
+			help="minimum pauses (in seconds) to consider when replaying I/O")
 
 __cmdParser__.add_option("-t", "--threads", action="store_true", \
                      dest="use_threads", default=False, \
