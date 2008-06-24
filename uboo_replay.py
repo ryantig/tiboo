@@ -102,8 +102,7 @@ class fd_table:
 			return
 
 		try: return os.lseek(fd, pos, whence)
-		except IOError: print "cannot seek there"
-		except OSError: print "cannot seek there", self.table
+		except IOError: print "cannot seek on vfd %d at byte %d (whence %d)" % (fd, pos, whence)
 
 	def read(self, virtual_fd, bytes):
 
@@ -116,7 +115,12 @@ class fd_table:
 		try:
 			t = time()
 			toret = len(os.read(fd, bytes))
-			self.read_time_stats.push( time() - t )
+			tdiff = time() - t
+
+			if toret > 0:
+				print "%.5f" % tdiff
+				self.read_time_stats.push(tdiff)
+
 			return toret
 		except OSError:
 			print "[ERROR} reading %d bytes from vfd %d" % (bytes, virtual_fd)
@@ -133,13 +137,14 @@ class fd_table:
 		try:
 			t = time()
 			toret = os.write(fd, "a" * bytes)
-			self.write_time_stats.push( time() - t )
+			if toret > 0:
+				self.write_time_stats.push( time() - t )
 			return toret
 		except OSError:
 			print "[ERROR} writing %d bytes to vfd %d" % (bytes, virtual_fd)
 			return -1
 
-	def dup2(self, virtual_fd, newfd):
+	def dup2(self, virtual_fd, wanted_fd):
 
 		fd = self.get_fd(virtual_fd)
 
@@ -147,16 +152,16 @@ class fd_table:
 			print "[ERROR] dup to inexisting vfd %d" % virtual_fd
 			return
 
-		newfd = self.get_fd(newfd)
+		newfd = self.get_fd(wanted_fd)
 
 		if newfd:
 			self.close(newfd)
 
 		self._lock.acquire()
-		self.table[newfd] = os.dup(fd)
+		self.table[wanted_fd] = os.dup(fd)
 		self._lock.release()
 
-		return newfd
+		return wanted_fd
 
 	def close(self, virtual_fd):
 
@@ -403,10 +408,10 @@ class io_process:
 					print "[ERROR] invalid open", retcode, op.retcode
 
 			elif op.optype == OP_TYPE_DUP:
-				retcode = fps.dup2(virtual_fd = op.fd, newfd = op.retcode)
+				retcode = fps.dup2(virtual_fd = op.fd, wanted_fd = op.retcode)
 
 			elif op.optype == OP_TYPE_DUP2:
-				retcode = fps.dup2(virtual_fd = op.fd, newfd = op.newfd)
+				retcode = fps.dup2(virtual_fd = op.fd, wanted_fd = op.newfd)
 				if retcode != op.retcode:
 					print "[ERROR] invalid dup2", retcode, op.retcode
 
@@ -420,13 +425,15 @@ class io_process:
 
 			elif op.optype == OP_TYPE_READ:
 				retcode = fps.read(virtual_fd = op.fd, bytes = op.size)
+
 				if retcode != op.retcode:
-					print "[WARNING] short read!", retcode, op.retcode
+					os.system("ls -l /proc/self/fd/%d" % fps.get_fd(op.fd) )
+					print "[WARNING] bad read: on fd %d expected %d, got %d bytes" % (op.fd, op.retcode, retcode)
 
 			elif op.optype == OP_TYPE_WRITE:
 				retcode = fps.write(virtual_fd = op.fd, bytes = op.size)
 				if retcode != op.retcode:
-					print "[WARNING] short write!", retcode, op.retcode
+					print "[WARNING] bad write: on fd %d expected %d, got %d bytes" % (op.fd, op.retcode, retcode)
 
 			else:
 				print "unhandled optype", op.optype
@@ -446,6 +453,10 @@ __cmdParser__.add_option("-w", "--workdir", metavar="DIR", \
 __cmdParser__.add_option("-p", "--pattern", metavar="PATTERN", \
 			dest="pattern", type = "string", \
 			help="replay I/O for files that match this mattern (comma separated list allowed)")
+
+__cmdParser__.add_option("-t", "--threads", action="store_true", \
+                     dest="use_threads", default=False, \
+                     help="use threads for different pids")
 
 (__cmdLineOpts__, __cmdLineArgs__) = __cmdParser__.parse_args()
 
@@ -488,7 +499,12 @@ def mangle_filename(exe):
 
 inc = 0
 for vfname in appdump_file.file_and_sizes:
+
+	# always skip /proc entried
+	if vfname.startswith("/proc"): continue
+
 #	if not vfname.startswith("/tmp"): continue
+
 	for onepat in __cmdLineOpts__.pattern:
 		if vfname.startswith(onepat): break
 	else:
@@ -509,6 +525,27 @@ for vfname in appdump_file.file_and_sizes:
 
 print "Done."
 
+if os.path.exists("/proc/sys/vm/drop_caches"):
+
+	print
+	ans = ""
+	while not ans in ["y", "n"]:
+		ans = raw_input("Would you like to flush the caches (y/n) ? ")
+
+	if ans == "y":
+		if os.getuid() == 0:
+			print
+			print "Flushing caches..."
+			os.system("""/bin/echo 3 > /proc/sys/vm/drop_caches""")
+		else:
+			print
+			print """This operation requires root root permissions, please enter your root password."""
+			print
+			print "Flushing caches..."
+			os.system("""su -c '/bin/echo 3 > /proc/sys/vm/drop_caches'""")
+
+print
+
 time_warp = None
 
 for op in appdump_file.walk_ops():
@@ -516,7 +553,8 @@ for op in appdump_file.walk_ops():
 	if time_warp == None:
 		time_warp = time_warp_class(dump_stime = op.tstamp)
 
-	op.pid = "main"
+	if not __cmdLineOpts__.use_threads:
+		op.pid = "main"
 
 	if not vthreads.has_key(op.pid):
 		print "spawning new process", op.pid
@@ -538,4 +576,4 @@ try:
 except KeyboardInterrupt:
 	print "[INFO] caught keyboard interrupt, exiting."
 
-os.system('''rm -rf "%s"''' % __cmdLineOpts__.workdir)
+#os.system('''rm -rf "%s"''' % __cmdLineOpts__.workdir)
