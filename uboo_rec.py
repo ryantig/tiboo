@@ -7,6 +7,7 @@ import sys
 from stat import *
 import pdb
 import re
+import commands
 from optparse import OptionParser, Option
 from time import sleep
 from tempfile import gettempdir
@@ -96,6 +97,8 @@ try:
 #			if not os.path.isfile(fname):
 #				continue
 
+			fdmap[int(ret[re_c.groupindex['ret']-1])] = fname
+
 			try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
 			except:	fsizes[fname] = -1
 
@@ -116,7 +119,7 @@ try:
 				if fdmap.has_key(fd):
 					continue
 
-				try:	fname = os.readlink("/proc/%d/fd/%d" % (int(pid), int(fd)))
+				try:	fname = os.readlink("/proc/%d/fd/%d" % (pid, fd))
 				except OSError:
 					fp.write( "# couldn't resolve fd %d for pid %d\n" % (fd, pid))
 					pass
@@ -131,8 +134,6 @@ try:
 				try:	fsizes[fname] = os.stat(fname)[ST_SIZE]
 				except:	fsizes[fname] = -1
 
-			
-
 except KeyboardInterrupt:
 	print "Keyboard interrupt."
 	pass
@@ -143,6 +144,9 @@ fp.write("%files\n# filename,size\n")
 
 for fname in fsizes.keys():
 	fp.write( "%s|%s\n" % (fname, fsizes[fname]) )
+
+status, output = commands.getstatusoutput("/bin/mount")
+fp.write("%mounts\n" + output + "\n")
 
 fp.close()
 
