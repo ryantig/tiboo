@@ -36,7 +36,7 @@ dd if=/dev/zero of=/tmp/testing123.bin bs=1M count=10
 
 = Replaying file I/O operations =
 
-This file could now be moved to a different system where "dd" is not even installed, and used to replay the same exact I/O operations:
+Using *uboo_replay*, this file could now be used to replay the same exact I/O operations:
 
 {{{
 [shnavid@winsuxx tiboo]$ ./uboo_replay.py -i appdump.txt 
