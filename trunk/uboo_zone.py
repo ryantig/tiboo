@@ -7,7 +7,6 @@ import sys
 import re
 from stat import *
 from time import time, sleep, clock
-import pdb
 from optparse import OptionParser, Option
 
 from common import *
@@ -58,9 +57,12 @@ for op in appdump_file.walk_ops():
 
 		continue
 
-	if op.optype == OP_TYPE_OPEN and op.fname == __cmdLineOpts__.fname:
+	if op.optype == OP_TYPE_OPEN:
 
-		fds.append(op.retcode)
+		if op.fname == __cmdLineOpts__.fname:
+			fds.append(op.retcode)
+		else:
+			continue
 
 	elif op.optype in [ OP_TYPE_DUP, OP_TYPE_DUP2 ]:
 	
@@ -74,15 +76,15 @@ for op in appdump_file.walk_ops():
 
 	elif op.optype == OP_TYPE_CLOSE:
 
-		del fds[fds.find(op.fd)]
+		del fds[fds.index(op.fd)]
 
 	elif op.optype == OP_TYPE_READ:
 
 		if not r_time_old:	delay = 0
-		else:				delay = op.time - r_time_old
+		else:				delay = op.tstamp - r_time_old
 
-		print "read %d bytes at position %d after %d secs" % (op.length, pos, delay)
-		fp_r.write("%d %d %d" % (op.pos, op.length, delay))
+		print "read %d bytes at position %d after %d secs" % (op.size, pos, delay)
+		fp_r.write("%d %d %d\n" % (pos, op.size, delay))
 
 		pos += op.retcode
 		r_time_old = op.time_finished()
@@ -90,17 +92,17 @@ for op in appdump_file.walk_ops():
 	elif op.optype == OP_TYPE_WRITE:
 
 		if not w_time_old:	delay = 0
-		else:				delay = op.time - w_time_old
+		else:				delay = op.tstamp - w_time_old
 
-		print "write %d bytes at position %d after %d secs" % (op.length, pos, delay)
-		fp_w.write("%d %d %d" % (op.pos, op.length, delay))
+		print "write %d bytes at position %d after %d secs" % (op.size, pos, delay)
+		fp_w.write("%d %d %d\n" % (pos, op.size, delay))
 
 		pos += op.retcode
 		w_time_old = op.time_finished()
 
 	else:
 	
-		print "Not implemented", iop
+		print "Not implemented", op
 		raise "Not_Implemented"
 		
 fp_r.close()

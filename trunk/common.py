@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import os
+from stat import *
+
 def human_byte_sizes(value):
     return human_value(value, 1024, "B")
 
@@ -245,11 +248,11 @@ class io_op:
 	time_elapsed = None
 	
 	def time_finished(self):
-		return float(self.time + self.time_elapsed)
+		return float(self.tstamp + self.time_elapsed)
 
 	def __str__(self):
 
-		return "%s = %s" % (self.print_call(), op.retcode)
+		return "%s = %s" % (self.print_call(), self.retcode)
 
 	def print_call(self):
 
