@@ -127,6 +127,9 @@ class io_set_class:
 
 		only_disks = ",".join(__cmdLineOpts__.only_disks)
 
+#plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
+
+
 		fp.write('''
 set datafile separator ","
 set ytics auto
@@ -151,7 +154,7 @@ set yrange [0:]
 
 set output '%s_iosizes.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
+plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ios+=1; iosize=$7*$8/1024; sizes[iosize]=1; if ($5==\\"r\\") r_ret[iosize]+=1; else w_ret[iosize]+=1; } END { for (x in sizes) print x\\",\\"r_ret[x]/ios*100\\",\\"w_ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Reads (%%)', '' using 3 with histograms title 'Writes (%%)'
 
 # All the following use X-AXIS as time
 
@@ -174,7 +177,7 @@ set ylabel "LBA (offset)"
 
 set output '%s_seeks.eps'
 
-plot	"<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ps=$7*$8/1024/150; if ($5 != \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' %s" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
+plot	"<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ps=$7*$8/1024/150; if ($5 == \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' %s" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
 	"" using 1:2:4 with points lt rgb "#0048ff" pt 7 ps variable title 'writes'
 
 # Bandwidth
@@ -184,7 +187,15 @@ set ylabel "KiB/s"
 
 set output '%s_throughput.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with filledcurves lt 2 title 'bandwidth (KiB/s)'
+plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; lineout[int($1)] += $7*$8/1024 } END { \\
+step=60; p_xtime=0; \\
+j = 1; for (i in lineout) { ind[j] = i; j++ } n = asort(ind); for (i = 1; i <= n; i++) { xtime = ind[i]; \\
+if (p_xtime==0 || xtime >= p_xtime + step) { \\
+ if (p_xtime!=0) { \\
+  print p_xtime\\",\\"int(p_sum/step); \\
+ } \\
+ p_sum = lineout[xtime]; p_xtime = xtime; \\
+} else { p_sum+=lineout[xtime] } } }' %s" using 1:2 with boxes lt 2 title 'bandwidth (KiB/s)'
 
 # IOPS
 
