@@ -43,8 +43,11 @@ if not __cmdLineOpts__.fname:
 	print
 	sys.exit()
 
-fp_r = open("%s_r.iozone" % __cmdLineOpts__.outname, "w")
-fp_w = open("%s_w.iozone" % __cmdLineOpts__.outname, "w")
+if not __cmdLineOpts__.outname:
+	__cmdLineOpts__.outname = os.path.basename(__cmdLineOpts__.fname).split('.', 1)[0]
+
+fp_r = open("%s_read_telemetry.txt" % __cmdLineOpts__.outname, "w")
+fp_w = open("%s_write_telemetry.txt" % __cmdLineOpts__.outname, "w")
 
 fds = []
 pos = 0
@@ -81,10 +84,10 @@ for op in appdump_file.walk_ops():
 	elif op.optype == OP_TYPE_READ:
 
 		if not r_time_old:	delay = 0
-		else:				delay = op.tstamp - r_time_old
+		else:			delay = (op.tstamp - r_time_old) * 1000
 
-		print "read %d bytes at position %d after %d secs" % (op.size, pos, delay)
-		fp_r.write("%d %d %d\n" % (pos, op.size, delay))
+		print "read %d bytes at position %d after %d msecs" % (op.size, pos, delay)
+		fp_r.write("%d %d %df\n" % (pos, op.size, delay))
 
 		pos += op.retcode
 		r_time_old = op.time_finished()
@@ -92,9 +95,11 @@ for op in appdump_file.walk_ops():
 	elif op.optype == OP_TYPE_WRITE:
 
 		if not w_time_old:	delay = 0
-		else:				delay = op.tstamp - w_time_old
+		else:			delay = (op.tstamp - w_time_old) * 1000
 
-		print "write %d bytes at position %d after %d secs" % (op.size, pos, delay)
+		delay = 5000
+
+		print "write %d bytes at position %d after %d msecs" % (op.size, pos, delay)
 		fp_w.write("%d %d %d\n" % (pos, op.size, delay))
 
 		pos += op.retcode
