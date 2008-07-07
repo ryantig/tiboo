@@ -125,6 +125,8 @@ class io_set_class:
 		tmp_fd, fname = mkstemp()
 		fp = os.fdopen(tmp_fd, 'w+b')
 
+		only_disks = ",".join(__cmdLineOpts__.only_disks)
+
 		fp.write('''
 set datafile separator ","
 set ytics auto
@@ -147,9 +149,9 @@ set xtics font ",14"
 set xrange [0:]
 set yrange [0:]
 
-set output 'tmp/graph_iosizes.eps'
+set output '%s_iosizes.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"} { ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
+plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ios+=1; tt+=$7*$8/1024; ret[$7*$8/1024]+=1 } END { for (x in ret) print x\\",\\"ret[x]*x/tt*100\\",\\"ret[x]/ios*100}' %s | sort -g -t ," using 2:xtic(1) with histograms title 'Data transferred (%%)', '' using 3 with histograms title 'Requests (%%)'
 
 # All the following use X-AXIS as time
 
@@ -170,18 +172,9 @@ unset xlabel
 set title "I/O access - disk seeks" 
 set ylabel "LBA (offset)"
 
-set output 'tmp/graph_seeks.eps'
+set output '%s_seeks.eps'
 
-#plot	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.4 title 'read size <= 32KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#6c971e" pt 7 ps 0.5 title 'read size <= 128KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2c971e" pt 7 ps 0.7 title 'read size <= 1024KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"r\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#095000" pt 7 ps 0.9 title 'read size > 1MiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 0  && iosize <= 32   ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#81a5ff" pt 7 ps 0.4 title 'write size <= 32KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 32  && iosize <= 128 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#4d7fff" pt 7 ps 0.5 title 'write size <= 128KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 128 && iosize <= 1024) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#2865ff" pt 7 ps 0.7 title 'write size <= 1024KiB', \
-#	"<awk 'BEGIN {FS=\\",\\"} { if ($5 != \\"w\\") next \; iosize=$7*$8/1024 \; if (iosize > 1024                 ) print $1\\",\\"$6 }' %s" using 1:2 with points lt rgb "#0048ff" pt 7 ps 0.9 title 'write size > 1MiB'
-
-plot	"<awk 'BEGIN {FS=\\",\\"} { ps=$7*$8/1024/150; if ($5 != \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' %s" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
+plot	"<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; ps=$7*$8/1024/150; if ($5 != \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' %s" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
 	"" using 1:2:4 with points lt rgb "#0048ff" pt 7 ps variable title 'writes'
 
 # Bandwidth
@@ -189,19 +182,20 @@ plot	"<awk 'BEGIN {FS=\\",\\"} { ps=$7*$8/1024/150; if ($5 != \\"r\\") { w_iosiz
 set title "I/O access - bandwidth" 
 set ylabel "KiB/s"
 
-set output 'tmp/graph_throughput.eps'
+set output '%s_throughput.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with filledcurves lt 2 title 'bandwidth (KiB/s)'
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; x=x+($7 * $8)/1024; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with filledcurves lt 2 title 'bandwidth (KiB/s)'
 
 # IOPS
 
 set title "I/O access - I/O operations per second" 
 set ylabel "iops"
 
-set output 'tmp/graph_iops.eps'
+set output '%s_iops.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} {x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
-''' % 		(self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname, self.data_fname) )
+plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
+
+''' % 		(__cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname) )
 
 		fp.close()
 
@@ -623,6 +617,9 @@ __cmdParser__.add_option(	"--only-disk", metavar="DEVICE", \
 __cmdParser__.add_option(	"--disk-to-disk", metavar="DEVICE1,DEVICE2", \
 		     dest="disk_to_disk", type = "string", action = "extend", default = [], \
                      help="replace occurrences of DEVICE1 in file with DEVICE2")
+__cmdParser__.add_option("-o", metavar="FNAME", \
+		     dest="outname", type = "string", default="tmp/graph", \
+                     help="base name for output graphs")
 
 (__cmdLineOpts__, __cmdLineArgs__) = __cmdParser__.parse_args()
 
