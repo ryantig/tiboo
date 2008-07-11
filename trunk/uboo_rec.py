@@ -69,6 +69,7 @@ try:
 			break
 
 		if not re_c.match(line):
+			print "cannot parse line: %s\n" % line
 			fp.write( "# cannot parse line: %s\n" % line)
 			continue
 
@@ -137,6 +138,7 @@ except KeyboardInterrupt:
 	pass
 
 r.close()
+os.unlink(tmppipe)
 
 fp.write("%files\n# filename,size\n")
 
