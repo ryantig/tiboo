@@ -124,8 +124,6 @@ try:
 					fp.write( "# couldn't resolve fd %d for pid %d\n" % (fd, pid))
 					pass
 
-				print fname
-
 #				if not os.path.isfile(fname):
 #					continue
 
