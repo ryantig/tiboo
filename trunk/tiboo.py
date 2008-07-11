@@ -10,6 +10,10 @@ from common import *
 
 OPTIONS = { "rw_breakdown":False }
 
+def k_get(array, key, alt_ret):
+	try:		 return array[key]
+	except KeyError: return alt_ret
+
 def size_align(value, align):
 	spare = value % align
 	if spare > 0:
@@ -204,7 +208,17 @@ set ylabel "iops"
 
 set output '%s_iops.eps'
 
-plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; x=x+1; if (timo != $1) {print $1\\",\\"x; timo = $1; x = 0} }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
+plot "<awk 'BEGIN {FS=\\",\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=$4) next; lineout[int($1)] += 1 } END { \\
+step=1; p_xtime=0; \\
+j = 1; for (i in lineout) { ind[j] = i; j++ } n = asort(ind); for (i = 1; i <= n; i++) { xtime = ind[i]; \\
+if (p_xtime==0 || xtime >= p_xtime + step) { \\
+ if (p_xtime!=0) { \\
+  print p_xtime\\",\\"int(p_sum/step); \\
+ } \\
+ p_sum = lineout[xtime]; p_xtime = xtime; \\
+} else { p_sum+=lineout[xtime] } } }' %s" using 1:2 with boxes lt 3 title "I/O operations per second"
+
+
 
 ''' % 		(__cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname) )
 
@@ -246,7 +260,16 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=
 		total_iops = min_avg_max_class("total_iops")
 		total_bs = min_avg_max_class("total_bs")
 		total_random = min_avg_max_class("total_random")
-		
+
+		fp_g_iops = open("/tmp/g_iops.dat", "w")
+		fp_g_bwidth = open("/tmp/g_bwidth.dat", "w")
+
+		buf_iops_break = {}
+		buf_iosize_break_r = {}
+		buf_iosize_break_w = {}
+		buf_seek_break_r = {}
+		buf_seek_break_w = {}
+
 		for sec, io_in_second in self.list_io_in_second():
 
 			if first_time == True:
@@ -271,7 +294,7 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=
 			
 			if iops > 0:
 			
-				print """t:%d iops:%d(%d%% reads, %d%% random) %s %s bytes:%s seq_bytes:%s""" % (sec, iops, iops_r*100/iops,  random_ops*100/iops, seq, bs, human_byte_sizes(bs.sum), human_byte_sizes(seq.sum))
+				print """t:%d iops:%d(%d%% reads, %d%% random) %s %s r_bytes:%s w_bytes:%s seq_bytes:%s""" % (sec, iops, iops_r*100/iops,  random_ops*100/iops, seq, bs, human_byte_sizes(bs_r.sum), human_byte_sizes(bs_w.sum), human_byte_sizes(seq.sum))
 				
 			else:
 
@@ -281,13 +304,194 @@ plot "<awk 'BEGIN {FS=\\",\\"; timo=\\"\\"} { if (\\"%s\\"!=\\"\\" && \\"%s\\"!=
 
 			try:    total_random.push(random_ops*100/iops)
 			except:
-					if iops > 0: total_random.push(0)
+				if iops > 0: total_random.push(0)
 			
 			total_bs = merge_stats("total_bs", bs, total_bs)
+
+			# graphing stuff
+
+			fp_g_iops.write("%d %d %d\n" % (sec, iops_r, iops_w))
+
+			fp_g_bwidth.write("%d %d %d\n" % (sec, bs_r.sum / 1024, bs_w.sum / 1024))
+
+			if iops > 0:
+				try:		 buf_iops_break[iops]+=1
+				except KeyError: buf_iops_break[iops]=1
+
+			for io in io_in_second:
+
+				if io.read:
+
+					if not buf_iosize_break_r.has_key(io.length):
+						buf_iosize_break_r[io.length / 1024] = 0
+
+					if not buf_seek_break_r.has_key(io.block):
+						buf_seek_break_r[io.block] = 0
+
+					buf_iosize_break_r[io.length / 1024]+=1
+					buf_seek_break_r[io.block]+=io.length
+
+				else:
+					try:		 buf_iosize_break_w[io.length / 1024]+=1
+					except KeyError: buf_iosize_break_w[io.length / 1024]=1
+
+					try:		 buf_seek_break_w[io.block]+=io.length
+					except KeyError: buf_seek_break_w[io.block]=io.length
+
+
+		# close temp files
+
+		fp_g_iops.close()
+		fp_g_bwidth.close()
 			
 		if first_time == True:
 			print "not enough data was found."
 			sys.exit()
+
+		# finish graphs
+
+		fp_g_iops_break = open("/tmp/g_iops_break.dat", "w")
+
+		if len(buf_iops_break) > 100:
+			xfilter = buf_iops_break.values()
+			xfilter.sort()
+			xfilter = xfilter[-100] # we won't graph values less than this to keep top 50 common iops
+		else:
+			xfilter = None
+
+		for iops in buf_iops_break:
+			if xfilter and buf_iops_break[iops] < xfilter: #buf_iops_break[iops] * 100 < total_iops.sum:
+				# skip unsignificant iops stats (less than 1%)
+				continue
+
+			fp_g_iops_break.write( "%d %d\n" % (iops, buf_iops_break[iops]) )
+
+		fp_g_iops_break.close()
+		del buf_iops_break
+
+		fp_g_iosize_break = open("/tmp/g_iosize_break.dat", "w")
+
+		iosizes = buf_iosize_break_r.keys()
+		iosizes.extend(buf_iosize_break_w.keys())
+		iosizes = unique(iosizes)
+		iosizes.sort()
+
+		for ioz in iosizes:
+			rval = k_get(buf_iosize_break_r, ioz, 0) * 100 / total_iops.sum
+			wval = k_get(buf_iosize_break_w, ioz, 0) * 100 / total_iops.sum
+
+			if rval == 0 and wval == 0:
+				pdb.set_trace()
+				continue
+
+			fp_g_iosize_break.write("%d %d %d\n" % (ioz, rval, wval) )
+
+		fp_g_iosize_break.close()
+		del buf_iosize_break_r, buf_iosize_break_w, iosizes
+
+		# generate gnuplot file
+
+		from tempfile import mkstemp
+
+		tmp_fd, fname = mkstemp()
+		fp = os.fdopen(tmp_fd, 'w+b')
+
+		only_disks = ",".join(__cmdLineOpts__.only_disks)
+
+		fp.write('''
+set ytics auto
+set xtic rotate by -45
+set auto y
+
+set term postscript eps enhanced color size 15,10 font 20
+
+# To convert .EPS to .PNG: find tmp -name '*.eps' -exec convert -transparent white -density 150x150 {} data/logo.png -gravity center -composite -format png {}.png \;
+
+# IOSZE breakdown
+
+set title "I/O size (data tranferred for size)" font ",40"
+set xlabel "Request size (KiB)"
+set ylabel "Percentage"
+
+set style histogram clustered gap 2 title offset character 0, 0, 0
+set style fill solid border -1
+
+set xtics font ",14"
+set xrange [0:]
+set yrange [0:]
+
+set output "''' + __cmdLineOpts__.outname + '''_iosizes_break.eps"
+
+plot "''' + fp_g_iosize_break.name + '''" using 2:xtic(1) with histograms title 'Reads (%)', '' using 3 with histograms title 'Writes (%)'
+
+# IOPS breakdown
+
+set title "IOPS breakdown (top 100)" font ",40"
+set xlabel "IOPS"
+set ylabel "Occurrences"
+
+set output "''' + __cmdLineOpts__.outname + '''_iops_break.eps"
+
+plot "''' + fp_g_iops_break.name + '''" using 2:xtic(1) with boxes title 'Reads (%)'
+
+# All the following use X-AXIS as time
+
+set xrange [*:*] noreverse nowriteback
+set yrange [*:*] noreverse nowriteback
+set xtics auto font ""
+set mxtics default
+set style fill solid noborder
+#set format y "%d"
+set format x "%Y-%m-%d\\n\\n%H:%M:%S"
+set timefmt "%s"
+set xdata time
+unset xlabel
+#set xrange [1213275298:1213275518]
+
+# LBA access
+
+set title "I/O access - disk seeks" 
+set ylabel "LBA (offset)"
+
+set output "''' + __cmdLineOpts__.outname + '''_seeks.eps"
+#set datafile separator ","
+
+#plot	"<awk 'BEGIN {FS=\\",\\"} { if (\\"'''+only_disks+'''\\"!=\\"\\" && \\"'''+only_disks+'''\\"!=$4) next; ps=$7*$8/1024/150; if ($5 == \\"r\\") { w_iosize=0 \; r_iosize=ps } else { r_iosize=0 \; w_iosize=ps } print $1\\",\\"$6\\",\\"r_iosize\\",\\"w_iosize }' '''+self.data_fname+'''" using 1:2:3 with points lt rgb "#6c971e" pt 7 ps variable title 'reads', \
+#	"" using 1:2:4 with points lt rgb "#0048ff" pt 7 ps variable title 'writes'
+
+#set datafile separator " "
+
+# Bandwidth
+
+set title "I/O access - bandwidth" 
+set ylabel "KiB/s"
+
+set output "''' + __cmdLineOpts__.outname + '''_throughput.eps"
+
+plot "''' + fp_g_bwidth.name + '''" using 1:2 with boxes lt 2 title 'Reads (KiB/s)', "" using 1:3 with boxes lt 3 title 'Writes (KiB/s)'
+
+# IOPS
+
+set title "I/O access - I/O operations per second" 
+set ylabel "iops"
+
+set output "''' + __cmdLineOpts__.outname + '''_iops.eps"
+
+plot "''' + fp_g_iops.name + '''" using 1:2 with boxes lt 2 title "Reads", "" using 1:3 with boxes lt 3 title "Writes"
+
+
+
+''')
+
+# % 		(__cmdLineOpts__.outname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname, __cmdLineOpts__.outname, only_disks, only_disks, self.data_fname) )
+
+		fp.close()
+
+		os.system("""gnuplot %s""" % fname)
+
+		print fname
+
+		# print out summary
 
 		print
 		print "Summary:"
