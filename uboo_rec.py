@@ -60,6 +60,8 @@ fp.write("%dump\n# timestamp,pid,syscall(args),return_value,time_elapsed\n")
 fsizes = {}
 fdmap = {}
 
+unfinished_by_pid = {}
+
 lines = 0
 try:
 	while True:
@@ -67,6 +69,17 @@ try:
 
 		if len(line) == 0:
 			break
+
+		xpos = line.find("""<unfinished ...>""")
+		if xpos > 0:
+			pid, unfinished_by_pid[pid] = line[:xpos].split(" ", 1)
+			continue
+
+		if line.find("""<... """) > 0:
+			pid = line.split(" ", 1)[0]
+			xpos = line.find(""" resumed>""")
+			line = pid + " " + unfinished_by_pid[pid] + line[xpos + len(""" resumed>"""):]
+#			continue
 
 		if not re_c.match(line):
 			print "cannot parse line: %s\n" % line
