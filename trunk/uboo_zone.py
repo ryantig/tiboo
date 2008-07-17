@@ -87,7 +87,7 @@ for op in appdump_file.walk_ops():
 		else:			delay = (op.tstamp - r_time_old) * 1000
 
 		print "read %d bytes at position %d after %d msecs" % (op.size, pos, delay)
-		fp_r.write("%d %d %df\n" % (pos, op.size, delay))
+		fp_r.write("%d %d %d\n" % (pos, op.size, delay))
 
 		pos += op.retcode
 		r_time_old = op.time_finished()
