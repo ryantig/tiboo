@@ -501,7 +501,7 @@ plot "''' + fp_g_iops.name + '''" using 1:2 with boxes lt 2 title "Reads", "" us
 		print "\tAverage IOPS: %s" % human_value(total_iops.avg(), 1000)
 		print "\tTotal bytes transferred:", human_byte_sizes(total_bs.sum)
 		print "\tAverage throughput: %s/s" % human_byte_sizes(total_bs.sum / ( sec - first_time ) )
-		print "\t", total_iops, total_random
+		print "\t%s %s" % (total_random, total_bs)
 		print
 
 	class ioreplay_engine_class:
